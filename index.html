@@ -26,6 +26,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 input,textarea,select{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--citrus);outline-offset:2px}
 .hide{display:none!important}
+.srch{width:36px;height:34px;border-radius:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;flex:none}
+.srch svg{width:19px;height:19px}
+.sbar{position:sticky;top:var(--tabs-top,108px);z-index:16;display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--bg);border-bottom:1px solid var(--line)}
+.sbar input{flex:1;min-width:0;border:2px solid var(--ink);border-radius:12px;padding:10px 12px;font-size:18px;background:#fff}
+.sbar button{font-weight:700;font-size:15px;padding:10px 6px;flex:none}
+.row .ct{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:0 5px;margin-right:6px;color:var(--ink);background:var(--ct)}
+.empty{text-align:center;padding:40px 10px;color:var(--muted)}
+.hitc{margin:12px 2px 8px;font-size:14px;color:var(--muted)}
+@media (min-width:700px){.sbar{max-width:760px;margin:0 auto}}
 .muted{color:var(--muted);font-size:14px}
 
 /* ---------- header ---------- */
@@ -108,14 +117,19 @@ nav.bn .dot{position:absolute;top:6px;left:calc(50% + 8px);background:var(--warn
 .kp-info .sf.none{background:var(--bg);border-color:transparent}
 .kp-info .sf.none b{color:#AAB1A8;font-size:16px;font-family:var(--sans)}
 .kp-info .cur b{font-size:15px;font-family:var(--sans)}
-.kp-units{display:flex;gap:6px}
-.kp-units button{flex:1;border:2px solid var(--line);border-radius:10px;padding:6px 4px;font-size:15px;background:var(--paper)}
-.kp-units button b{font-family:var(--mono);margin-left:4px}
+.kp-units{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0;margin:0 -12px;padding-left:12px;padding-right:12px}
+.kp-units::-webkit-scrollbar{display:none}
+.kp-units button{flex:none;min-width:58px;border:2px solid var(--line);border-radius:12px;padding:7px 12px;font-size:22px;font-weight:900;background:var(--paper);line-height:1.1}
+.kp-units button b{font-family:var(--mono);font-size:18px;margin-left:5px;color:var(--ok)}
+.kp-units button.main{border-color:#9AA79D}
+.kp-units button.has{border-color:var(--ok);background:#EEF7F1}
 .kp-units button.on{border-color:var(--ink);background:var(--ink);color:#fff}
+.kp-units button.on b{color:#7EE3A5}
+.kp-units .sep{flex:none;width:1px;background:var(--line);margin:4px 2px}
 .kp-disp{display:flex;align-items:baseline;justify-content:flex-end;gap:8px;background:var(--bg);border-radius:14px;padding:6px 18px;min-height:74px;align-items:center}
 .kp-disp .n{font-family:var(--mono);font-weight:700;font-size:52px;line-height:1}
 .kp-disp .n.ph{color:#B5BCB3}
-.kp-disp .u{font-size:20px;color:var(--muted)}
+.kp-disp .u{font-size:34px;font-weight:900;color:var(--ink)}
 .kp-warn{min-height:22px;font-size:14px;font-weight:700;text-align:center;border-radius:10px;padding:3px 8px}
 .kp-warn.lo{color:var(--low);background:var(--lowbg)}
 .kp-warn.bad{color:#fff;background:var(--warn)}
@@ -210,13 +224,14 @@ select.in{appearance:auto}
     <span class="sync" id="sync"></span>
     <div class="brand">採鮮點貨</div>
     <input type="date" class="date-in" id="date" aria-label="日期">
+    <button class="srch" id="srchBtn" aria-label="搜尋品項"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
     <button class="who" id="who">選人員</button>
   </div>
   <div class="bar"><i id="barFill" style="width:0"></i></div>
   <div class="bar-txt"><span id="barL"></span><span id="barR"></span></div>
 </header>
 
-<div id="vCount"><div class="tabs" id="tabs"></div><main id="list"></main></div>
+<div id="vCount"><div class="sbar hide" id="sbar"><input type="search" id="sq" placeholder="搜尋品項名稱" autocomplete="off" enterkeyhint="search"><button id="sqX">取消</button></div><div class="tabs" id="tabs"></div><main id="list"></main></div>
 <main id="vSum" class="hide"></main>
 <main id="vHist" class="hide"></main>
 <main id="vSet" class="hide"></main>
@@ -358,21 +373,25 @@ const isZero = e => !!e && (e.vs ? Object.values(e.vs).length > 0 && Object.valu
 const firstVal = (i, e) => uVal(i, e, units(i)[0]);
 const isLow = (i, e) => { if (!e || !minOf(i) || isZero(e)) return false; const v = firstVal(i, e); return v != null && v < minOf(i) };
 const needOf = (i, e) => { if (!e || !minOf(i)) return 0; if (isZero(e)) return minOf(i); const v = firstVal(i, e); return v != null && v < minOf(i) ? +(minOf(i) - v).toFixed(2) : 0 };
+/* units actually present in an entry: item units first, then any extra unit picked while counting */
+const entryUnits = (i, e) => { const us = units(i); if (!e || !e.vs) return us; return [...us, ...Object.keys(e.vs).filter(u => !us.includes(u))] };
+const isMulti = (i, e) => !!e && entryUnits(i, e).filter(u => uVal(i, e, u) != null).length > 1;
 function qtyText(i, e) {
   if (!e) return "";
   if (isZero(e)) return "缺貨";
-  return units(i).map(u => { const v = uVal(i, e, u); return v == null ? null : fmt(v) + u }).filter(Boolean).join(" ");
+  return entryUnits(i, e).map(u => { const v = uVal(i, e, u); return v == null ? null : fmt(v) + u }).filter(Boolean).join(" ");
 }
 function qtyHtml(i, e) {
   if (isZero(e)) return "缺貨";
-  const us = units(i), parts = us.map(u => [u, uVal(i, e, u)]).filter(x => x[1] != null);
-  return parts.map(([u, v]) => `${fmt(v)}<em>${esc(u)}</em>`).join(" ");
+  return entryUnits(i, e).map(u => [u, uVal(i, e, u)]).filter(x => x[1] != null).map(([u, v]) => `${fmt(v)}<em>${esc(u)}</em>`).join(" ");
 }
+/* every unit used anywhere in the item list, plus common weight units */
+function allUnits() { const set = new Set(); items().forEach(i => units(i).forEach(u => u && set.add(u))); ["斤", "公斤"].forEach(u => set.add(u)); return [...set] }
 
 /* ================= state ================= */
 const S = {
   cfg: null, date: today(), day: null, prev: null, unsub: null,
-  cat: null, view: "Count", kp: null, editing: false, draft: null, imp: null, uploading: null,
+  cat: null, view: "Count", kp: null, q: null, editing: false, draft: null, imp: null, uploading: null,
   me: (() => { try { return localStorage.getItem("caixian-inv-me") || "" } catch { return "" } })()
 };
 const items = () => S.cfg.items;
@@ -443,7 +462,24 @@ function renderBar() {
   const dot = $("#navDot"); dot.classList.toggle("hide", !s.req || !!dn); dot.textContent = s.req;
   document.documentElement.style.setProperty("--tabs-top", $("#top").offsetHeight + "px");
 }
+const norm = s => String(s || "").normalize("NFKC").toLowerCase().replace(/\s+/g, "");
+function renderSearch() {
+  const c = counts(), p = pcounts(), q = norm(S.q);
+  document.documentElement.style.setProperty("--catbg", "var(--bg)");
+  if (!q) { $("#list").innerHTML = `<div class="empty">輸入品名，例如「高麗」、「蔥」、「k」</div>`; return }
+  const hits = items().filter(i => norm(i.n).includes(q)).sort((a, b) => (norm(a.n).startsWith(q) ? 0 : 1) - (norm(b.n).startsWith(q) ? 0 : 1));
+  $("#list").innerHTML = hits.length
+    ? `<div class="hitc">找到 ${hits.length} 項</div><div class="rows">${hits.map(i => rowHtml(i, c[i.id], p[i.id], true)).join("")}</div>`
+    : `<div class="empty">找不到「${esc(S.q)}」<br><br>不在清單裡的品項，可以到「總覽 → 備註」寫下來或拍照；<br>常用的話到「設定」新增品項</div>`;
+}
+function openSearch() { S.q = ""; $("#sbar").classList.remove("hide"); $("#tabs").classList.add("hide"); if (S.view !== "Count") setView("Count"); else renderCount(); window.scrollTo(0, 0); $("#sq").value = ""; $("#sq").focus() }
+function closeSearch() { S.q = null; $("#sq").blur(); $("#sbar").classList.add("hide"); $("#tabs").classList.remove("hide"); renderCount(); window.scrollTo(0, 0) }
+$("#srchBtn").onclick = () => S.q == null ? openSearch() : closeSearch();
+$("#sqX").onclick = closeSearch;
+$("#sq").oninput = e => { S.q = e.target.value; renderSearch() };
+$("#sq").onkeydown = e => { if (e.key === "Enter") { e.target.blur(); const f = $("#list .row"); if (f && $("#list .row").length === 1) f.click() } };
 function renderCount() {
+  if (S.q != null) return renderSearch();
   const c = counts(), p = pcounts();
   document.documentElement.style.setProperty("--catbg", catTint(S.cat));
   $("#tabs").innerHTML = S.cfg.cats.map(cat => {
@@ -458,8 +494,8 @@ function renderCount() {
     ${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}</div>
     <div class="rows">${its.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>`;
 }
-function rowHtml(i, e, pe) {
-  let cls = "row", val = `<span class="dash">—</span>`, diff = "", multi = units(i).length > 1;
+function rowHtml(i, e, pe, showCat) {
+  let cls = "row", val = `<span class="dash">—</span>`, diff = "", multi = isMulti(i, e) || isMulti(i, pe);
   if (e != null) {
     cls += isZero(e) ? " zero" : isLow(i, e) ? " low" : " set";
     val = qtyHtml(i, e);
@@ -468,7 +504,7 @@ function rowHtml(i, e, pe) {
   } else if (isReq(i)) cls += " need";
   const sub = [units(i).join("/"), minOf(i) ? `安全 ${fmt(minOf(i))}` : "", pe ? `上次 ${qtyText(i, pe)}` : "", e && e.by ? e.by : ""].filter(Boolean).join("　");
   const badges = (isReq(i) ? `<span class="bdg rq">必</span>` : "") + (needOf(i, e) > 0 && !isZero(e) ? `<span class="bdg lo">補 ${fmt(needOf(i, e))}</span>` : "");
-  return `<button class="${cls}" data-id="${i.id}"><span class="nm"><b>${esc(i.n)}${badges}</b><span class="s">${esc(sub)}</span></span>${diff}<span class="val${multi && e && !isZero(e) ? " multi" : ""}">${val}</span></button>`;
+  return `<button class="${cls}" data-id="${i.id}"><span class="nm"><b>${esc(i.n)}${badges}</b><span class="s">${showCat ? `<span class="ct" style="--ct:${catTint(i.c)}">${esc(i.c)}</span>` : ""}${esc(sub)}</span></span>${diff}<span class="val${isMulti(i, e) && !isZero(e) ? " multi" : ""}">${val}</span></button>`;
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (!b) return; S.cat = b.dataset.cat; renderCount(); window.scrollTo(0, 0) });
 $("#list").addEventListener("click", e => {
@@ -481,9 +517,11 @@ function needMe() { if (!S.me) { openPeople(); return true } return false }
 function openKp(id) {
   if (needMe()) return;
   const it = itemById(id); if (!it) return;
-  const e = counts()[id], us = units(it), bufs = {}, fresh = {};
+  const e = counts()[id], pe = pcounts()[id], own = units(it);
+  const main = [...new Set([...own, ...entryUnits(it, e), ...entryUnits(it, pe)])].filter(u => own.includes(u) || uVal(it, e, u) != null || uVal(it, pe, u) != null);
+  const us = [...main, ...allUnits().filter(u => !main.includes(u))], bufs = {}, fresh = {};
   us.forEach(u => { const v = uVal(it, e, u); bufs[u] = v == null ? "" : fmt(v); fresh[u] = true });
-  S.kp = { id, us, u: us[0], bufs, fresh, touched: {}, arm: false };
+  S.kp = { id, us, main, u: us[0], bufs, fresh, touched: {}, arm: false };
   if (it.c !== S.cat) { S.cat = it.c; if (S.view === "Count") renderCount() }
   $("#kp").classList.add("show"); document.body.style.overflow = "hidden";
   renderKp();
@@ -517,8 +555,9 @@ function renderKp() {
   $("#kpPrevV").style.fontSize = pe && qtyText(it, pe).length > 5 ? "14px" : "";
   $("#kpCurV").textContent = e ? `${qtyText(it, e)}・${e.by || ""}` : "還沒點";
   // units
-  $("#kpUnits").innerHTML = k.us.length > 1 ? k.us.map(u => `<button class="${u === k.u ? "on" : ""}" data-u="${esc(u)}">${esc(u)}<b>${k.bufs[u] === "" ? "—" : esc(k.bufs[u])}</b></button>`).join("") : "";
-  $("#kpUnits").classList.toggle("hide", k.us.length < 2);
+  const chip = u => `<button class="${u === k.u ? "on" : ""}${k.main.includes(u) ? " main" : ""}${k.bufs[u] !== "" ? " has" : ""}" data-u="${esc(u)}">${esc(u || "—")}${k.bufs[u] !== "" ? `<b>${esc(k.bufs[u])}</b>` : ""}</button>`;
+  $("#kpUnits").innerHTML = k.us.filter(u => k.main.includes(u)).map(chip).join("") + `<span class="sep"></span>` + k.us.filter(u => !k.main.includes(u)).map(chip).join("");
+  { const row = $("#kpUnits"), on = row.querySelector("button.on"); row.scrollLeft = on ? Math.max(0, on.offsetLeft - row.offsetLeft - (row.clientWidth - on.offsetWidth) / 2) : 0 }
   // display
   const b = k.bufs[k.u], n = $("#kpNum");
   n.textContent = b === "" ? "0" : b; n.classList.toggle("ph", b === "" || (k.fresh[k.u] && !k.touched[k.u] && e == null));
@@ -542,7 +581,7 @@ function buildEntry(it, vals) {
   const us = units(it), keys = Object.keys(vals);
   if (!keys.length) return null;
   const base = { by: S.me, t: Date.now(), n: it.n, u: it.u, c: it.c };
-  if (us.length > 1) return { ...base, v: vals[us[0]] ?? null, vs: vals };
+  if (us.length > 1 || keys.some(u => u !== us[0])) return { ...base, v: vals[us[0]] ?? null, vs: vals };
   return { ...base, v: vals[us[0]] };
 }
 function commitKp() {
@@ -560,6 +599,7 @@ function nextTarget(dir) {
   return all[idx + dir] || null;
 }
 function step(dir) {
+  if (S.q != null) { closeKp(); return } // from search: back to the results
   const nx = nextTarget(dir);
   if (!nx) {
     if (dir > 0) {
@@ -593,7 +633,7 @@ $("#kpGo").onclick = () => {
   step(1);
 };
 $("#kpPrev").onclick = () => step(-1);
-$("#kpZero").onclick = () => { const it = itemById(S.kp.id), vals = {}; S.kp.us.forEach(u => vals[u] = 0); store.setCount(S.date, it.id, buildEntry(it, vals)); step(1) };
+$("#kpZero").onclick = () => { const it = itemById(S.kp.id), vals = {}; units(it).forEach(u => vals[u] = 0); store.setCount(S.date, it.id, buildEntry(it, vals)); step(1) };
 $("#kpSame").onclick = () => { const it = itemById(S.kp.id), pe = pcounts()[it.id]; if (!pe) return; const vals = {}; S.kp.us.forEach(u => { const v = uVal(it, pe, u); if (v != null) vals[u] = v }); if (!Object.keys(vals).length) return toast("上次的單位和現在不同，請手動輸入"); store.setCount(S.date, it.id, buildEntry(it, vals)); step(1) };
 $("#kpClear").onclick = () => { store.setCount(S.date, S.kp.id, null); S.kp.us.forEach(u => { S.kp.bufs[u] = ""; S.kp.fresh[u] = true }); S.kp.touched = {}; S.kp.arm = false; renderKp() };
 $("#kpClose").onclick = closeKp;
@@ -618,6 +658,7 @@ $("#ppList").onclick = e => { const b = e.target.closest("[data-p]"); if (!b) re
 /* ================= views ================= */
 function setView(v) {
   S.view = v; S.editing = false; S.imp = null;
+  if (v !== "Count" && S.q != null) { S.q = null; $("#sbar").classList.add("hide"); $("#tabs").classList.remove("hide") }
   if (v !== "Count") document.documentElement.style.removeProperty("--catbg");
   ["Count", "Sum", "Hist", "Set"].forEach(x => $("#v" + x).classList.toggle("hide", x !== v));
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
@@ -642,6 +683,11 @@ function renderSumInner() {
   const drops = all.filter(i => { const a = firstVal(i, c[i.id]), b = firstVal(i, p[i.id]); return a != null && b != null && a > 0 && b > 0 && a <= b * .5 });
   const byCat = S.cfg.cats.map(cat => { const its = itemsOf(cat); return { cat, d: its.filter(i => c[i.id] != null).length, n: its.length } });
   $("#vSum").innerHTML = `
+  <div class="panel"><h3>備註</h3>
+    <textarea class="note" id="note" placeholder="缺貨、異常、要補的貨">${esc((S.day && S.day.note) || "")}</textarea>
+    ${S.day && S.day.noteBy ? `<p class="muted" style="margin:6px 0 0">最後編輯：${esc(S.day.noteBy)}</p>` : ""}
+    <div class="phs">${photoList().map(([id, m]) => `<button class="ph" data-ph="${id}"><img src="${m.th}" alt="備註照片"><span>${esc(m.by || "")} ${hm(m.t)}</span></button>`).join("")}${S.uploading ? `<div class="ph up">上傳中 ${S.uploading}…</div>` : ""}</div>
+    <button class="btn" id="phAdd" style="margin-top:10px">📷 拍照 / 上傳手寫單</button></div>
   <div class="panel ${dn ? "fin" : ""}"><h3>${dateLabel(S.date)} 進度 <span class="c">${s.done}/${s.total}</span></h3>
     ${byCat.map(x => `<div class="pcat" style="--cc:${catColor(x.cat)}"><span class="nm">${esc(x.cat)}</span><span class="tr"><i style="width:${x.n ? x.d / x.n * 100 : 0}%"></i></span><span class="n">${x.d}/${x.n}</span></div>`).join("")}
     ${S.prev ? `<p class="muted" style="margin:10px 0">比對基準：上次紀錄 ${dateLabel(S.prev.date)}</p>` : ""}
@@ -663,11 +709,6 @@ function renderSumInner() {
     ${drops.map(i => `<tr data-go="${i.id}"><td>${esc(i.n)}</td><td class="r">${fmt(firstVal(i, p[i.id]))}</td><td class="r">${fmt(firstVal(i, c[i.id]))} ${esc(units(i)[0])}</td></tr>`).join("")}</table></div>` : ""}
   <div class="panel"><h3>還沒點（非必點） <span class="c">${miss.length}</span></h3>
     ${miss.length ? `<div class="chips">${miss.map(i => `<button class="chip" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>` : `<p class="muted" style="margin:0">全部點完了</p>`}</div>
-  <div class="panel"><h3>備註</h3>
-    <textarea class="note" id="note" placeholder="缺貨、異常、要補的貨">${esc((S.day && S.day.note) || "")}</textarea>
-    ${S.day && S.day.noteBy ? `<p class="muted" style="margin:6px 0 0">最後編輯：${esc(S.day.noteBy)}</p>` : ""}
-    <div class="phs">${photoList().map(([id, m]) => `<button class="ph" data-ph="${id}"><img src="${m.th}" alt="備註照片"><span>${esc(m.by || "")} ${hm(m.t)}</span></button>`).join("")}${S.uploading ? `<div class="ph up">上傳中 ${S.uploading}…</div>` : ""}</div>
-    <button class="btn" id="phAdd" style="margin-top:10px">📷 拍照 / 上傳手寫單</button></div>
   <div class="grid2" style="margin-bottom:12px"><button class="btn pri" id="bLine">複製 LINE 文字</button><button class="btn" id="bXls">匯出這天 Excel</button></div>`;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
   $("#vSum").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
@@ -712,7 +753,7 @@ async function copyLine() {
 }
 function saveWb(sheets, name) { const wb = XLSX.utils.book_new(); sheets.forEach(([n, ws]) => XLSX.utils.book_append_sheet(wb, ws, n)); XLSX.writeFile(wb, name) }
 function sheetOf(rows, cols) { const ws = XLSX.utils.aoa_to_sheet(rows); if (cols) ws["!cols"] = cols.map(w => ({ wch: w })); return ws }
-const cellVal = (i, e) => !e ? "" : (units(i).length > 1 || isZero(e) ? qtyText(i, e) : e.v);
+const cellVal = (i, e) => !e ? "" : (isMulti(i, e) || isZero(e) || firstVal(i, e) == null ? qtyText(i, e) : firstVal(i, e));
 function exportDay() {
   const c = counts(), p = pcounts();
   const rows = [["分類", "品名", "單位", "必點", "數量", "安全量", "要補", "上次", "清點人"]];
