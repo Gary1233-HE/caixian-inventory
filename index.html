@@ -82,6 +82,8 @@ main{padding:6px 12px calc(84px + var(--safe-b))}
 .row.low{background:#fff;border-color:rgba(0,0,0,.06);box-shadow:inset 5px 0 0 var(--low)}.row.low .val{color:var(--low)}
 .row.zero{background:#fff;border-color:rgba(0,0,0,.06);box-shadow:inset 5px 0 0 var(--warn)}.row.zero .val{color:var(--warn);font-family:var(--sans);font-size:18px}
 .row.need{border:2px dashed var(--warn);background:rgba(255,255,255,.8)}
+.row.skip{opacity:.5;background:rgba(255,255,255,.3)}
+.skip-h{margin:18px 2px 8px;font-size:14px;font-weight:900;color:var(--muted)}.skip-h span{font-weight:500;font-size:12px;margin-left:4px}
 .bdg{display:inline-block;font-size:11px;font-weight:700;border-radius:5px;padding:0 5px;line-height:17px;flex:none}
 .bdg.rq{background:var(--warn);color:#fff}
 .bdg.lo{background:var(--low);color:#fff}
@@ -136,9 +138,10 @@ nav.bn .dot{position:absolute;top:6px;left:calc(50% + 8px);background:var(--warn
 .kp-warn.lo{color:var(--low);background:var(--lowbg)}
 .kp-warn.bad{color:#fff;background:var(--warn)}
 .kp-warn.ok{color:var(--ok)}
-.kp-quick{display:grid;grid-template-columns:1.2fr 1.3fr .8fr 1fr;gap:6px}
+.kp-quick{display:grid;grid-template-columns:1.2fr 1.2fr .8fr 1fr;gap:6px}
 .kp-quick button{border:1px solid var(--line);border-radius:10px;padding:10px 2px;font-size:14px;font-weight:700;background:var(--paper)}
 .kp-quick .z{color:var(--warn);border-color:#EDC0BA;background:var(--warnbg)}
+.kp-quick .ok{color:var(--ok);border-color:#A9D6B8;background:#EEF7F1}
 .kp-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,minmax(0,1fr));gap:6px;min-height:0}
 @media (min-height:760px) and (min-width:700px){.kp-grid{max-height:340px}}
 /* 螢幕矮的時候自動縮小，不用捲動 */
@@ -213,6 +216,18 @@ select.in{appearance:auto}
 .ed-row button,.ed-row select{width:32px;height:36px;border-radius:8px;background:var(--bg);font-size:14px;flex:none;border:0}
 .ed-row .rqb{font-weight:900;color:#B7BDB5}.ed-row .rqb.on{background:var(--warn);color:#fff}
 .ed-row .del{color:var(--warn)}
+.ed-row .fqb{font-weight:900;color:#B7BDB5}.ed-row .fqb.on{background:#4F95C9;color:#fff}
+@media (max-width:520px){
+  .ed-row{flex-wrap:wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px}
+  .ed-row .n{flex:1 1 100%}
+  .ed-row .u{flex:1;width:auto}
+  .ed-head{display:none!important}
+}
+.fq-box{background:#fff;border:2px solid #4F95C9;border-radius:10px;padding:10px;margin:-2px 0 10px}
+.fq-t{font-size:13px;font-weight:700;margin-bottom:6px}
+.fq-box .seg{display:flex;gap:5px;flex-wrap:wrap}
+.fq-box .seg button{min-width:42px;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-weight:700;padding:0 10px}
+.fq-box .seg button.on{background:#4F95C9;border-color:#4F95C9;color:#fff}
 .diffbox{font-size:14px;line-height:1.7;background:var(--bg);border-radius:10px;padding:10px;margin:10px 0;max-height:260px;overflow:auto}
 .diffbox b{font-family:var(--mono)}
 .diffbox .a{color:var(--ok)}.diffbox .d{color:var(--warn)}.diffbox .c{color:var(--low)}
@@ -276,15 +291,15 @@ select.in{appearance:auto}
     <div class="kp-disp"><span class="n" id="kpNum">0</span><span class="u" id="kpUnit"></span></div>
     <div class="kp-warn" id="kpWarn"></div>
     <div class="kp-quick">
+      <button class="ok" id="kpOk">夠用</button>
       <button class="z" id="kpZero">缺貨</button>
-      <button id="kpSame">同上次</button>
       <button data-k="half">½</button>
       <button id="kpClear">清除</button>
     </div>
     <div class="kp-grid">
-      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
-      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
       <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
       <button data-k=".">.</button><button data-k="0">0</button><button class="fn" data-k="bk" aria-label="刪除一位">⌫</button>
     </div>
     <div class="kp-nav"><button class="pv" id="kpPrev">上一項</button><button class="go" id="kpGo">確定・下一項</button></div>
@@ -392,12 +407,16 @@ const needOf = (i, e) => { if (!e || !minOf(i)) return 0; if (isZero(e)) return 
 /* units actually present in an entry: item units first, then any extra unit picked while counting */
 const entryUnits = (i, e) => { const us = units(i); if (!e || !e.vs) return us; return [...us, ...Object.keys(e.vs).filter(u => !us.includes(u))] };
 const isMulti = (i, e) => !!e && entryUnits(i, e).filter(u => uVal(i, e, u) != null).length > 1;
+/* 「夠用」：不點數量，只標記庫存足夠 { ok: 1 } */
+const isOk = e => !!e && !!e.ok;
 function qtyText(i, e) {
   if (!e) return "";
+  if (isOk(e)) return "夠用";
   if (isZero(e)) return "缺貨";
   return entryUnits(i, e).map(u => { const v = uVal(i, e, u); return v == null ? null : fmt(v) + u }).filter(Boolean).join(" ");
 }
 function qtyHtml(i, e) {
+  if (isOk(e)) return `<span style="font-family:var(--sans);font-size:17px">夠用</span>`;
   if (isZero(e)) return "缺貨";
   return entryUnits(i, e).map(u => [u, uVal(i, e, u)]).filter(x => x[1] != null).map(([u, v]) => `${fmt(v)}<em>${esc(u)}</em>`).join(" ");
 }
@@ -415,7 +434,34 @@ const itemsOf = c => items().filter(i => i.c === c);
 const itemById = id => items().find(i => i.id === id);
 const counts = () => (S.day && S.day.counts) || {};
 const pcounts = () => (S.prev && S.prev.counts) || {};
-const reqMissing = () => items().filter(i => isReq(i) && counts()[i.id] == null);
+/* ===== 點貨頻率 =====
+   f 空白＝每天；"2"＝隔天點（昨天點過，今天就不用點）；"w25"＝貨運日（星期二、五）的前一天點 */
+const WD = "日一二三四五六";
+const addDay = (d, n) => { const x = new Date(d + "T00:00"); x.setDate(x.getDate() + n); return x.toLocaleDateString("sv-SE") };
+const wdOf = d => new Date(d + "T00:00").getDay();
+const freqOf = i => String(i.f || "");
+function freqLabel(f) { f = String(f || ""); if (f === "2") return "隔天點"; if (f[0] === "w" && f.length > 1) return "貨運" + [...f.slice(1)].map(d => WD[d]).join("") + "前一天點"; return "" }
+function parseFreq(v) {
+  const t = String(v ?? "").trim(); if (!t || /每天|每日/.test(t)) return "";
+  if (/^(2|2天|隔天|隔天點|兩天|二天|每2天|每兩天|兩天一次|2天一次)$/.test(t)) return "2";
+  const ds = [...new Set([...t.replace(/貨運日|[星期週周禮拜]/g, "")].map(ch => WD.indexOf(ch)).filter(k => k >= 0))].sort();
+  return ds.length ? "w" + ds.join("") : "";
+}
+function isDue(i, d = S.date) {
+  const f = freqOf(i); if (!f) return true;
+  if (f === "2") { if (!S.prev || S.prev.date !== addDay(d, -1)) return true; return !(S.prev.counts && S.prev.counts[i.id] != null) }
+  if (f[0] === "w") return f.slice(1).includes(String(wdOf(addDay(d, 1))));
+  return true;
+}
+/* 今天要點的：排到今天，或今天已經點了 */
+const isActive = i => isDue(i) || counts()[i.id] != null;
+function nextDue(i) {
+  const f = freqOf(i);
+  if (f === "2") return addDay(S.date, 1);
+  if (f[0] === "w") { for (let k = 1; k <= 7; k++) { const d = addDay(S.date, k); if (f.slice(1).includes(String(wdOf(addDay(d, 1))))) return d } }
+  return null;
+}
+const reqMissing = () => items().filter(i => isReq(i) && isDue(i) && counts()[i.id] == null);
 
 /* ================= boot ================= */
 $("#sync").className = "sync " + (store.mode === "fb" ? "on" : "local");
@@ -455,7 +501,7 @@ function render() {
 function stats() {
   const c = counts(), all = items();
   return {
-    done: all.filter(i => c[i.id] != null).length, total: all.length,
+    done: all.filter(i => c[i.id] != null).length, total: all.filter(isActive).length,
     zero: all.filter(i => isZero(c[i.id])).length,
     low: all.filter(i => isLow(i, c[i.id])).length,
     req: reqMissing().length
@@ -499,16 +545,17 @@ function renderCount() {
   const c = counts(), p = pcounts();
   document.documentElement.style.setProperty("--catbg", catTint(S.cat));
   $("#tabs").innerHTML = S.cfg.cats.map(cat => {
-    const its = itemsOf(cat), d = its.filter(i => c[i.id] != null).length;
+    const its = itemsOf(cat).filter(isActive), d = its.filter(i => c[i.id] != null).length;
     const lw = its.filter(i => needOf(i, c[i.id]) > 0).length, rq = its.filter(i => isReq(i) && c[i.id] == null).length;
     return `<button class="tab${cat === S.cat ? " on" : ""}${d === its.length && its.length ? " done" : ""}" style="--cc:${catColor(cat)};--ct:${catTint(cat)}" data-cat="${esc(cat)}"><span class="t">${esc(cat)}</span><span class="p">${d}/${its.length}${rq ? `<span class="rq">必${rq}</span>` : ""}${lw ? `<span class="lw">補${lw}</span>` : ""}</span></button>`;
   }).join("");
   const on = $("#tabs .tab.on"); if (on) { const t = $("#tabs"); t.scrollTo({ left: Math.max(0, on.offsetLeft - (t.clientWidth - on.offsetWidth) / 2) }) }
-  const its = itemsOf(S.cat), left = its.filter(i => c[i.id] == null).length;
+  const all = itemsOf(S.cat), its = all.filter(isActive), rest = all.filter(i => !isActive(i)), left = its.filter(i => c[i.id] == null).length;
   $("#list").innerHTML = `<div class="cat-h" style="--cc:${catColor(S.cat)}"><span class="sw"></span><h2>${esc(S.cat)}</h2>
     <span class="muted">${left ? `剩 ${left} 項` : "這類點完了"}</span>
     ${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}</div>
-    <div class="rows">${its.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>`;
+    <div class="rows">${its.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>
+    ${rest.length ? `<div class="skip-h">今天不用點 ${rest.length} 項<span>（要點也可以直接點進去）</span></div><div class="rows">${rest.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>` : ""}`;
 }
 function rowHtml(i, e, pe, showCat) {
   let cls = "row", val = `<span class="dash">—</span>`, diff = "", multi = isMulti(i, e) || isMulti(i, pe);
@@ -517,14 +564,16 @@ function rowHtml(i, e, pe, showCat) {
     val = qtyHtml(i, e);
     const a = firstVal(i, e), b = firstVal(i, pe);
     if (!multi && a != null && b != null && a !== b) { const d = a - b; diff = `<span class="diff ${d > 0 ? "up" : "dn"}">${d > 0 ? "▲" : "▼"}${fmt(Math.abs(d))}</span>` }
-  } else if (isReq(i)) cls += " need";
-  const sub = [units(i).join("/"), minOf(i) ? `安全 ${fmt(minOf(i))}` : "", pe ? `上次 ${qtyText(i, pe)}` : "", e && e.by ? e.by : ""].filter(Boolean).join("　");
+  } else if (!isDue(i)) cls += " skip";
+  else if (isReq(i)) cls += " need";
+  const nd = e == null && !isDue(i) ? nextDue(i) : null;
+  const sub = [units(i).join("/"), freqLabel(freqOf(i)), nd ? `下次 ${dateLabel(nd)}` : "", minOf(i) ? `安全 ${fmt(minOf(i))}` : "", pe ? `上次 ${qtyText(i, pe)}` : "", e && e.by ? e.by : ""].filter(Boolean).join("　");
   const badges = (isReq(i) ? `<span class="bdg rq">必</span>` : "") + (needOf(i, e) > 0 && !isZero(e) ? `<span class="bdg lo">補 ${fmt(needOf(i, e))}</span>` : "");
   return `<button class="${cls}" data-id="${i.id}"><span class="nm"><b>${esc(i.n)}${badges}</b><span class="s">${showCat ? `<span class="ct" style="--ct:${catTint(i.c)}">${esc(i.c)}</span>` : ""}${esc(sub)}</span></span>${diff}<span class="val${isMulti(i, e) && !isZero(e) ? " multi" : ""}">${val}</span></button>`;
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (!b) return; S.cat = b.dataset.cat; renderCount(); window.scrollTo(0, 0) });
 $("#list").addEventListener("click", e => {
-  if (e.target.closest("[data-start]")) { const c = counts(); const f = itemsOf(S.cat).find(i => c[i.id] == null); if (f) openKp(f.id); return }
+  if (e.target.closest("[data-start]")) { const c = counts(); const f = itemsOf(S.cat).find(i => isDue(i) && c[i.id] == null); if (f) openKp(f.id); return }
   const r = e.target.closest("[data-id]"); if (r) openKp(r.dataset.id);
 });
 
@@ -561,7 +610,8 @@ function renderKp() {
   const e = counts()[it.id], pe = pcounts()[it.id], all = itemsOf(it.c);
   $("#kp").style.setProperty("--kt", catTint(it.c));
   $("#kpName").textContent = it.n;
-  $("#kpSub").textContent = `${it.c}　第 ${all.indexOf(it) + 1} / ${all.length} 項`;
+  const act = all.filter(isActive), pos = act.indexOf(it);
+  $("#kpSub").textContent = `${it.c}　${pos >= 0 ? `第 ${pos + 1} / ${act.length} 項` : "今天不用點"}${freqOf(it) ? "　" + freqLabel(freqOf(it)) : ""}`;
   $("#kpReq").classList.toggle("hide", !isReq(it));
   // info
   const mn = minOf(it), sf = $("#kpSafe");
@@ -587,9 +637,6 @@ function renderKp() {
   else if (mn && v0 != null && v0 < mn && (k.touched[k.us[0]] || e)) { w.classList.add("lo"); w.textContent = v0 === 0 ? `缺貨，要補 ${fmt(mn)}${k.us[0]}` : `低於安全量，要補 ${fmt(mn - v0)}${k.us[0]}` }
   else if (mn && v0 != null && (k.touched[k.us[0]] || e)) { w.classList.add("ok"); w.textContent = "✓ 在安全量以上" }
   sf.style.borderColor = mn && v0 != null && v0 < mn ? "var(--low)" : "";
-  // same-as-last
-  const sm = $("#kpSame"); sm.disabled = !pe; sm.style.opacity = pe ? 1 : .4;
-  sm.textContent = pe ? `同上次 ${isZero(pe) ? "(缺)" : qtyText(it, pe)}` : "同上次";
   $("#kpGo").classList.toggle("arm", !!(k.arm && bad));
   $("#kpGo").textContent = k.arm && bad ? "沒錯，確定" : "確定・下一項";
 }
@@ -612,7 +659,8 @@ function commitKp() {
 }
 function nextTarget(dir) {
   const all = items(), idx = all.findIndex(i => i.id === S.kp.id);
-  return all[idx + dir] || null;
+  for (let k = idx + dir; k >= 0 && k < all.length; k += dir) if (isActive(all[k])) return all[k];
+  return null;
 }
 function step(dir) {
   if (S.q != null) { closeKp(); return } // from search: back to the results
@@ -649,8 +697,8 @@ $("#kpGo").onclick = () => {
   step(1);
 };
 $("#kpPrev").onclick = () => step(-1);
+$("#kpOk").onclick = () => { const it = itemById(S.kp.id); store.setCount(S.date, it.id, { ok: 1, by: S.me, t: Date.now(), n: it.n, u: it.u, c: it.c }); step(1) };
 $("#kpZero").onclick = () => { const it = itemById(S.kp.id), vals = {}; units(it).forEach(u => vals[u] = 0); store.setCount(S.date, it.id, buildEntry(it, vals)); step(1) };
-$("#kpSame").onclick = () => { const it = itemById(S.kp.id), pe = pcounts()[it.id]; if (!pe) return; const vals = {}; S.kp.us.forEach(u => { const v = uVal(it, pe, u); if (v != null) vals[u] = v }); if (!Object.keys(vals).length) return toast("上次的單位和現在不同，請手動輸入"); store.setCount(S.date, it.id, buildEntry(it, vals)); step(1) };
 $("#kpClear").onclick = () => { store.setCount(S.date, S.kp.id, null); S.kp.us.forEach(u => { S.kp.bufs[u] = ""; S.kp.fresh[u] = true }); S.kp.touched = {}; S.kp.arm = false; renderKp() };
 $("#kpClose").onclick = closeKp;
 document.addEventListener("keydown", e => {
@@ -693,11 +741,12 @@ function renderSum() {
 function renderSumInner() {
   const c = counts(), p = pcounts(), all = items(), s = stats(), dn = S.day && S.day.done;
   const rq = reqMissing();
-  const miss = all.filter(i => c[i.id] == null && !isReq(i));
+  const miss = all.filter(i => c[i.id] == null && isDue(i) && !isReq(i));
   const zero = all.filter(i => isZero(c[i.id]));
   const need = all.filter(i => needOf(i, c[i.id]) > 0);
   const drops = all.filter(i => { const a = firstVal(i, c[i.id]), b = firstVal(i, p[i.id]); return a != null && b != null && a > 0 && b > 0 && a <= b * .5 });
-  const byCat = S.cfg.cats.map(cat => { const its = itemsOf(cat); return { cat, d: its.filter(i => c[i.id] != null).length, n: its.length } });
+  const byCat = S.cfg.cats.map(cat => { const its = itemsOf(cat).filter(isActive); return { cat, d: its.filter(i => c[i.id] != null).length, n: its.length } });
+  const skipN = all.filter(i => !isActive(i)).length;
   $("#vSum").innerHTML = `
   <div class="panel"><h3>備註</h3>
     <textarea class="note" id="note" placeholder="缺貨、異常、要補的貨">${esc((S.day && S.day.note) || "")}</textarea>
@@ -706,8 +755,9 @@ function renderSumInner() {
     <button class="btn" id="phAdd" style="margin-top:10px">📷 拍照 / 上傳手寫單</button></div>
   <div class="panel ${dn ? "fin" : ""}"><h3>${dateLabel(S.date)} 進度 <span class="c">${s.done}/${s.total}</span></h3>
     ${byCat.map(x => `<div class="pcat" style="--cc:${catColor(x.cat)}"><span class="nm">${esc(x.cat)}</span><span class="tr"><i style="width:${x.n ? x.d / x.n * 100 : 0}%"></i></span><span class="n">${x.d}/${x.n}</span></div>`).join("")}
+    ${skipN ? `<p class="muted" style="margin:10px 0 0">另有 ${skipN} 項今天不用點（隔天點或貨運前一天點）</p>` : ""}
     ${S.prev ? `<p class="muted" style="margin:10px 0">比對基準：上次紀錄 ${dateLabel(S.prev.date)}</p>` : ""}
-    ${dn ? `<p style="margin:10px 0 8px;color:var(--ok);font-weight:900">✓ ${esc(dn.by)} 在 ${hm(dn.t)} 完成點貨${dn.left ? `（${dn.left} 項未點）` : ""}</p><button class="btn" id="bUndo">取消完成，繼續點</button>`
+    ${dn ? `<p style="margin:10px 0 8px;color:var(--ok);font-weight:900">✓ ${esc(dn.by)} 在 ${hm(dn.t)} 完成點貨${dn.left ? `（${dn.left} 項未點）` : ""}</p><div class="grid2"><button class="btn" id="bUndo">取消完成，繼續點</button><button class="btn pri" id="bPrintR">🖨 A4 列印結果</button></div>`
       : `<button class="btn okb" id="bDone" style="margin-top:6px">完成點貨</button>`}
   </div>
   ${rq.length ? `<div class="panel alert"><h3>必點還沒點 <span class="c w">${rq.length}</span></h3>
@@ -725,11 +775,13 @@ function renderSumInner() {
     ${drops.map(i => `<tr data-go="${i.id}"><td>${esc(i.n)}</td><td class="r">${fmt(firstVal(i, p[i.id]))}</td><td class="r">${fmt(firstVal(i, c[i.id]))} ${esc(units(i)[0])}</td></tr>`).join("")}</table></div>` : ""}
   <div class="panel"><h3>還沒點（非必點） <span class="c">${miss.length}</span></h3>
     ${miss.length ? `<div class="chips">${miss.map(i => `<button class="chip" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>` : `<p class="muted" style="margin:0">全部點完了</p>`}</div>
-  <div class="grid2" style="margin-bottom:12px"><button class="btn pri" id="bLine">複製 LINE 文字</button><button class="btn" id="bXls">匯出這天 Excel</button></div>`;
+  <div class="grid2" style="margin-bottom:8px"><button class="btn pri" id="bLine">複製 LINE 文字</button><button class="btn" id="bXls">匯出這天 Excel</button></div>
+  <button class="btn" id="bPrintR2" style="margin-bottom:12px">🖨 A4 列印這天點貨結果</button>`;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
   $("#vSum").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
   let nt; $("#note").oninput = e => { clearTimeout(nt); const v = e.target.value; nt = setTimeout(() => store.setNote(S.date, v, S.me || ""), 700) };
   $("#bLine").onclick = copyLine; $("#bXls").onclick = exportDay;
+  $("#bPrintR2").onclick = printResult; if ($("#bPrintR")) $("#bPrintR").onclick = printResult;
   $("#phAdd").onclick = () => { if (needMe()) return; $("#phIn").value = ""; $("#phIn").click() };
   if ($("#bDone")) $("#bDone").onclick = finish;
   if ($("#bUndo")) $("#bUndo").onclick = () => store.setDone(S.date, null);
@@ -738,9 +790,11 @@ function finish() {
   if (needMe()) return;
   const rq = reqMissing();
   if (rq.length) { toast(`必點還有 ${rq.length} 項沒點：${rq.slice(0, 3).map(i => i.n).join("、")}${rq.length > 3 ? "…" : ""}`, 3000); if (navigator.vibrate) navigator.vibrate([80, 60, 80]); return }
-  const left = items().filter(i => counts()[i.id] == null).length;
+  const left = items().filter(i => isDue(i) && counts()[i.id] == null).length;
   if (left && !confirm(`還有 ${left} 項沒點（都不是必點），確定完成？`)) return;
-  store.setDone(S.date, { by: S.me, t: Date.now(), left });
+  const dn = { by: S.me, t: Date.now(), left };
+  store.setDone(S.date, dn);
+  if (confirm("點貨完成！要 A4 列印這天的點貨結果嗎？")) { const keep = S.day; S.day = { ...(S.day || {}), done: dn }; printSheet(true); S.day = keep }
   toast("點貨完成 ✓");
 }
 function lineText() {
@@ -789,7 +843,7 @@ async function renderHist() {
   <div class="panel"><h3>匯出多天對照表</h3><p class="muted" style="margin:0 0 10px">品項 × 日期，一次看每樣貨的庫存變化</p>
     <div class="grid2"><select class="in" id="hN"><option value="7">最近 7 次</option><option value="14">最近 14 次</option><option value="31" selected>最近 31 次</option><option value="90">最近 90 次</option></select>
     <button class="btn pri" id="hX">匯出 Excel</button></div></div>`;
-  $("#hX").onclick = exportRange; $("#pPrint").onclick = printSheet; $("#pXls").onclick = paperXls;
+  $("#hX").onclick = exportRange; $("#pPrint").onclick = () => printSheet(false); $("#pXls").onclick = paperXls;
   try {
     const ds = await store.listDays(60), total = items().length;
     $("#hl").innerHTML = ds.length ? ds.map(d => { const cs = d.counts || {}, n = Object.keys(cs).length, z = Object.values(cs).filter(isZero).length;
@@ -810,16 +864,40 @@ async function exportRange() {
 }
 
 /* ---------- paper sheet ---------- */
-function paperHtml() {
+/* filled=true：印出這天的點貨結果（A4 橫式，和紙本表同版面） */
+function paperHtml(filled) {
   const cats = S.cfg.cats, maxn = Math.max(...cats.map(c => itemsOf(c).length));
   const fs = maxn > 34 ? 8 : maxn > 30 ? 8.5 : 9.5;
-  const col = c => `<table><colgroup><col><col style="width:8mm"><col style="width:9mm"></colgroup><thead><tr><th colspan="3" style="background:${catTint(c)};border-top:3px solid ${catColor(c)}">${esc(c)}</th></tr>
+  const c = counts();
+  const cell = i => {
+    if (!filled) return `<td></td>`;
+    const e = c[i.id];
+    if (e == null) return isDue(i) ? `<td class="q miss">未點</td>` : `<td class="q skip">免點</td>`;
+    if (isOk(e)) return `<td class="q ok">夠用</td>`;
+    if (isZero(e)) return `<td class="q zero">缺</td>`;
+    const t = qtyText(i, e), one = !isMulti(i, e);
+    return `<td class="q${isLow(i, e) ? " low" : ""}${t.length > 5 ? " sm" : ""}">${esc(one ? fmt(firstVal(i, e)) : t)}</td>`;
+  };
+  const col = cat => `<table><colgroup><col><col style="width:8mm"><col style="width:${filled ? 11 : 9}mm"></colgroup><thead><tr><th colspan="3" style="background:${catTint(cat)};border-top:3px solid ${catColor(cat)}">${esc(cat)}</th></tr>
     <tr class="sub"><th>品名</th><th>單位</th><th>數量</th></tr></thead><tbody>
-    ${Array.from({ length: maxn }, (_, k) => { const i = itemsOf(c)[k];
-      return i ? `<tr><td class="n">${isReq(i) ? "<b class=r>★</b>" : ""}${esc(i.n)}${minOf(i) ? `<sup>≥${fmt(minOf(i))}</sup>` : ""}</td><td class="u">${esc(units(i).join("/"))}</td><td></td></tr>` : `<tr><td></td><td></td><td></td></tr>` }).join("")}
+    ${Array.from({ length: maxn }, (_, k) => { const i = itemsOf(cat)[k];
+      return i ? `<tr><td class="n">${isReq(i) ? "<b class=r>★</b>" : ""}${esc(i.n)}${minOf(i) ? `<sup>≥${fmt(minOf(i))}</sup>` : ""}</td><td class="u">${esc(units(i).join("/"))}</td>${cell(i)}</tr>` : `<tr><td></td><td></td><td></td></tr>` }).join("")}
     </tbody></table>`;
+  const who = [...new Set(Object.values(c).map(x => x.by).filter(Boolean))].join("、");
+  const dn = S.day && S.day.done, st = stats();
+  const need = items().filter(i => needOf(i, c[i.id]) > 0), zero = items().filter(i => isZero(c[i.id]));
+  const title = filled ? "每日庫存點貨結果" : "每日庫存清點表";
+  const head = filled
+    ? `<div class="f">日期：<span>${esc(dateLabel(S.date))}</span></div><div class="f">清點人員：<span>${esc(who || "—")}</span></div><div class="f">${dn ? `✓ ${esc(dn.by)} ${hm(dn.t)} 完成` : `點了 ${st.done}/${st.total}（未完成）`}</div>`
+    : `<div class="f">日期：<span></span></div><div class="f">清點人員：<span></span></div>`;
+  const legend = filled
+    ? `<p class="note">★ 必點　≥ 安全庫存　<b class="lg low">紅字</b> 低於安全量　<b class="lg zero">缺</b> 缺貨　<b class="lg ok">夠用</b> 沒點數量但足夠　<b class="lg skip">免點</b> 今天不用點　<b class="lg miss">未點</b> 今天該點沒點　　印出時間 ${new Date().toLocaleString("zh-TW", { hour12: false })}</p>`
+    : `<p class="note">※ 每日早上出貨完，要離開前清點一次，簡單目測即可。★ 必點，不能漏；「≥數字」是安全庫存，低於就圈起來。</p>`;
+  const foot = filled
+    ? `<div class="ft">${need.length ? `要補貨：${need.map(i => `${esc(i.n)} ${fmt(needOf(i, c[i.id]))}${esc(units(i)[0])}`).join("、")}<br>` : ""}${zero.length ? `缺貨：${zero.map(i => esc(i.n)).join("、")}<br>` : ""}備註：${esc((S.day && S.day.note) || "")}${photoList().length ? `　（另有 ${photoList().length} 張照片在 App 裡）` : ""}</div>`
+    : `<div class="ft">備註（缺貨／異常／需補貨）：</div>`;
   return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>採鮮農產行 每日庫存清點表</title>
+<title>採鮮農產行 ${title} ${filled ? S.date : ""}</title>
 <style>
 @page{size:A4 landscape;margin:6mm}
 *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -838,23 +916,32 @@ td.n{white-space:nowrap;overflow:hidden}
 td.n sup{font-size:6.5pt;color:#B35F00;margin-left:1px}
 td.n b.r{color:#C23B2E;font-size:7pt;margin-right:1px}
 td.u{text-align:center;font-size:6.5pt;color:#555;padding:0;white-space:nowrap;overflow:hidden}
-.ft{margin-top:2mm;border:1.5px solid #111;height:13mm;padding:1mm 2mm;font-size:9.5pt;font-weight:700}
+.ft{margin-top:2mm;border:1.5px solid #111;min-height:13mm;padding:1mm 2mm;font-size:9pt;font-weight:700;line-height:1.35}
+td.q{text-align:center;font-weight:700;white-space:nowrap;overflow:hidden;padding:0}
+td.q.sm{font-size:6.5pt}
+td.q.low{color:#C23B2E}
+td.q.zero{color:#fff;background:#C23B2E}
+td.q.ok{color:#2E7A4C;font-size:7pt}
+td.q.skip{color:#aaa;font-size:6.5pt;font-weight:400}
+td.q.miss{color:#D5730A;font-size:6.5pt}
+.lg{padding:0 3px;border-radius:2px}.lg.low{color:#C23B2E}.lg.zero{color:#fff;background:#C23B2E}.lg.ok{color:#2E7A4C}.lg.skip{color:#999;font-weight:400}.lg.miss{color:#D5730A}
 .bar{position:fixed;right:12px;bottom:12px}
 .bar button{font:inherit;font-size:16px;padding:10px 18px;border-radius:10px;border:0;background:#1D2B22;color:#fff}
 @media print{.bar{display:none}}
 </style></head><body><div class="page">
-<div class="hd"><h1>採鮮農產行　每日庫存清點表</h1><div class="f">日期：<span></span></div><div class="f">清點人員：<span></span></div></div>
-<p class="note">※ 每日早上出貨完，要離開前清點一次，簡單目測即可。★ 必點，不能漏；「≥數字」是安全庫存，低於就圈起來。</p>
+<div class="hd"><h1>採鮮農產行　${title}</h1>${head}</div>
+${legend}
 <div class="grid">${cats.map(col).join("")}</div>
-<div class="ft">備註（缺貨／異常／需補貨）：</div>
+${foot}
 </div><div class="bar"><button onclick="print()">列印 / 存 PDF</button></div>
 <script>setTimeout(()=>print(),400)<\/script></body></html>`;
 }
-function printSheet() {
+function printSheet(filled) {
   const w = window.open("", "_blank");
   if (!w) return toast("瀏覽器擋住了新視窗，請允許彈出視窗");
-  w.document.open(); w.document.write(paperHtml()); w.document.close();
+  w.document.open(); w.document.write(paperHtml(filled === true)); w.document.close();
 }
+const printResult = () => { if (!S.day || !Object.keys(counts()).length) return toast("這天還沒有點貨資料"); printSheet(true) };
 function paperXls() {
   const cats = S.cfg.cats, maxn = Math.max(...cats.map(c => itemsOf(c).length));
   const rows = [["採鮮農產行　每日庫存清點表"], ["※ ★ 必點；安全量低於就圈起來"], ["日期：", "", "", "", "", "", "清點人員："], []];
@@ -909,21 +996,27 @@ function drawSet() {
     <p class="muted" style="margin:6px 0 0">這台手機目前是：<b>${esc(S.me || "未選")}</b></p></div>
 
   <div class="panel"><h3>用 Excel 批次修改品項</h3>
-    <p class="muted" style="margin:0 0 10px">下載目前的品項表 → 在電腦上改（分類、品名、單位、安全量、必點）→ 上傳回來，確認差異後套用。同一品項有多種單位就寫「箱/斤」。</p>
+    <p class="muted" style="margin:0 0 10px">下載目前的品項表 → 在電腦上改（分類、品名、單位、安全量、必點、點貨頻率）→ 上傳回來，確認差異後套用。同一品項有多種單位就寫「箱/斤」。</p>
     <div class="grid2"><button class="btn" id="xDown">下載品項表</button><button class="btn pri" id="xUp">上傳品項表</button></div>
     <div id="impBox"></div></div>
 
   <div class="panel"><h3>品項管理</h3>
     <select class="in" id="sC" style="margin-bottom:10px">${dr.cats.map(c => `<option ${c === cat ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
-    <div class="ed-head"><span style="flex:1">品名</span><span style="width:62px;text-align:center">單位</span><span style="width:48px;text-align:center">安全量</span><span style="width:32px;text-align:center">必點</span><span style="width:104px"></span></div>
+    <div class="ed-head"><span style="flex:1">品名</span><span style="width:62px;text-align:center">單位</span><span style="width:48px;text-align:center">安全量</span><span style="width:32px;text-align:center">必點</span><span style="width:32px;text-align:center">頻率</span><span style="width:104px"></span></div>
     <div id="sI">${its.map(i => `<div class="ed-row" data-id="${i.id}">
       <input class="n" value="${esc(i.n)}" data-f="n" aria-label="品名">
       <input class="u" value="${esc(i.u)}" data-f="u" aria-label="單位" placeholder="箱/斤">
       <input class="m" type="number" inputmode="decimal" min="0" step="0.5" value="${minOf(i) || ""}" data-f="m" placeholder="—" aria-label="安全庫存">
       <button class="rqb ${isReq(i) ? "on" : ""}" data-a="rq" aria-label="必點">必</button>
+      <button class="fqb ${freqOf(i) ? "on" : ""}" data-a="fq" aria-label="點貨頻率" title="${esc(freqLabel(freqOf(i)) || "每天點")}">${freqOf(i) === "2" ? "隔" : freqOf(i) ? "運" : "天"}</button>
       <button data-a="up" aria-label="上移">↑</button>
       <select data-f="c" aria-label="換分類">${dr.cats.map(c => `<option ${c === i.c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
-      <button class="del" data-a="del" aria-label="刪除">✕</button></div>`).join("")}</div>
+      <button class="del" data-a="del" aria-label="刪除">✕</button></div>${dr._fq === i.id ? `<div class="fq-box" data-id="${i.id}">
+        <div class="fq-t">${esc(i.n)} 多久點一次？</div>
+        <div class="seg"><button data-fq="" class="${!freqOf(i) ? "on" : ""}">每天</button><button data-fq="2" class="${freqOf(i) === "2" ? "on" : ""}">隔天點</button></div>
+        <div class="fq-t" style="margin-top:8px">貨運日（勾選後，會在貨運前一天點）</div>
+        <div class="seg">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button data-fw="${d}" class="${freqOf(i)[0] === "w" && freqOf(i).includes(String(d)) ? "on" : ""}">${WD[d]}</button>`).join("")}</div>
+        <div class="muted" style="margin-top:6px;font-size:12px">${freqLabel(freqOf(i)) || "每天點"}</div></div>` : ""}`).join("")}</div>
     <div class="ed-row" style="margin-top:10px"><input class="n" id="aN" placeholder="新品名"><input class="u" id="aU" placeholder="單位"><input class="m" id="aM" type="number" inputmode="decimal" placeholder="安全"><button id="aAdd" style="width:auto;padding:0 12px;background:var(--ink);color:#fff">新增</button></div>
     <p class="muted" style="margin:8px 0 0">多單位用「/」分開，例如「箱/斤」；安全量以第一個單位計算。</p>
   </div>
@@ -948,10 +1041,20 @@ function drawSet() {
     else it[f] = e.target.value.trim();
     dirty(); if (f === "c" && e.type === "change") drawSet();
   };
+  $("#sI").addEventListener("click", e => {
+    const bx = e.target.closest(".fq-box"); if (!bx) return;
+    const it = dr.items.find(i => i.id === bx.dataset.id); if (!it) return;
+    const q = e.target.closest("[data-fq]"), w = e.target.closest("[data-fw]");
+    if (q) { if (q.dataset.fq) it.f = q.dataset.fq; else delete it.f }
+    else if (w) { const cur = freqOf(it)[0] === "w" ? freqOf(it).slice(1).split("") : []; const d = w.dataset.fw; const nx = cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]; if (nx.length) it.f = "w" + nx.sort().join(""); else delete it.f }
+    else return;
+    dirty(); drawSet();
+  });
   $("#sI").onclick = e => {
     const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
     const arr = dr.items, idx = arr.findIndex(i => i.id === id), it = arr[idx]; dirty();
     if (b.dataset.a === "rq") { if (it.r) delete it.r; else it.r = 1 }
+    else if (b.dataset.a === "fq") { dr._fq = dr._fq === id ? null : id }
     else if (b.dataset.a === "del") { if (!confirm(`刪除「${it.n}」？過去的紀錄會保留。`)) return; arr.splice(idx, 1) }
     else if (b.dataset.a === "up") { let k = idx - 1; while (k >= 0 && arr[k].c !== it.c) k--; if (k >= 0) [arr[idx], arr[k]] = [arr[k], arr[idx]] }
     drawSet();
@@ -974,7 +1077,7 @@ function newId(arr) { const max = arr.reduce((m, i) => Math.max(m, +String(i.id)
 async function saveDraft(msg) {
   const dr = S.draft;
   const cats = dr.cats.filter(c => dr.items.some(i => i.c === c));
-  const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r }) => { const o = { id, n, u: u || "", c }; if (m > 0) o.m = m; if (r) o.r = 1; return o }), people: dr.people.length ? dr.people : ["土豆"] };
+  const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r, f }) => { const o = { id, n, u: u || "", c }; if (m > 0) o.m = m; if (r) o.r = 1; if (f) o.f = f; return o }), people: dr.people.length ? dr.people : ["土豆"] };
   try { await store.saveCfg(c); S.editing = false; S.imp = null; toast(msg) } catch (e) { err(e) }
 }
 async function autoSuggest() {
@@ -991,12 +1094,12 @@ async function autoSuggest() {
 /* ---------- Excel item import / export ---------- */
 function downloadItems() {
   const src = S.draft || S.cfg;
-  const rows = [["分類", "品名", "單位", "安全量", "必點"]];
-  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", minOf(i) || "", isReq(i) ? "V" : ""])));
+  const rows = [["分類", "品名", "單位", "安全量", "必點", "點貨頻率"]];
+  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", minOf(i) || "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : ""])));
   const help = [["欄位", "怎麼填"], ["分類", "照原本的分類名稱；新分類也可以，會自動加在最後。空白＝跟上一列同分類"], ["品名", "必填。同一品項兩種包裝要分開點，就寫兩列不同品名（例：青江菜(件)、青江菜(捆)）"],
-    ["單位", "一種單位：箱。同品項會混著不同單位：箱/斤（點貨時可以同時輸入 2箱 5斤）"], ["安全量", "數字，以第一個單位計。空白＝不追蹤"], ["必點", "填 V（或 是、必、1）＝必點，沒點完不能按完成"],
+    ["單位", "一種單位：箱。同品項會混著不同單位：箱/斤（點貨時可以同時輸入 2箱 5斤）"], ["安全量", "數字，以第一個單位計。空白＝不追蹤"], ["必點", "填 V（或 是、必、1）＝必點，沒點完不能按完成"], ["點貨頻率", "空白＝每天點；隔天＝兩天點一次（昨天點過今天就不用）；貨運二五＝星期二、五貨運，前一天（一、四）點"],
     ["排序", "表格上下順序就是 App 裡的順序"], ["刪除", "整列刪掉即可，過去的紀錄會保留"]];
-  saveWb([["品項", sheetOf(rows, [8, 16, 10, 8, 6])], ["說明", sheetOf(help, [8, 70])]], `品項表_${today()}.xlsx`);
+  saveWb([["品項", sheetOf(rows, [8, 16, 10, 8, 6, 12])], ["說明", sheetOf(help, [8, 70])]], `品項表_${today()}.xlsx`);
 }
 const truthy = v => /^(v|y|yes|是|必|1|true|✓|✔|o|ｖ|Ｖ)$/i.test(String(v ?? "").trim());
 $("#xlIn").onchange = async e => {
@@ -1007,7 +1110,7 @@ $("#xlIn").onchange = async e => {
     const hi = rows.findIndex(r => r.some(x => String(x).trim() === "品名"));
     if (hi < 0) return toast("找不到「品名」欄，請用下載的品項表修改");
     const h = rows[hi].map(x => String(x).trim()), col = names => h.findIndex(x => names.includes(x));
-    const cC = col(["分類"]), cN = col(["品名"]), cU = col(["單位"]), cM = col(["安全量", "安全庫存"]), cR = col(["必點"]);
+    const cC = col(["分類"]), cN = col(["品名"]), cU = col(["單位"]), cM = col(["安全量", "安全庫存"]), cR = col(["必點"]), cF = col(["點貨頻率", "點貨", "頻率"]);
     const base = S.draft || JSON.parse(JSON.stringify(S.cfg));
     const old = base.items, used = new Set(), out = [], cats = [];
     let lastCat = base.cats[0], idPool = old.slice();
@@ -1021,13 +1124,14 @@ $("#xlIn").onchange = async e => {
       const id = match ? match.id : newId([...idPool, ...out]);
       if (match) used.add(match.id);
       const it = { id, n, u, c }; if (m > 0) it.m = m; if (rq) it.r = 1;
+      const fq = cF >= 0 ? parseFreq(r[cF]) : (match ? freqOf(match) : ""); if (fq) it.f = fq;
       out.push(it);
     }
     if (!out.length) return toast("檔案裡沒有品項");
     const byId = new Map(old.map(i => [i.id, i]));
     const added = out.filter(i => !byId.has(i.id));
     const removed = old.filter(i => !out.some(o => o.id === i.id));
-    const changed = out.filter(i => { const o = byId.get(i.id); return o && (o.c !== i.c || (o.u || "") !== i.u || (minOf(o) || 0) !== (minOf(i) || 0) || !!o.r !== !!i.r) });
+    const changed = out.filter(i => { const o = byId.get(i.id); return o && (o.c !== i.c || (o.u || "") !== i.u || (minOf(o) || 0) !== (minOf(i) || 0) || !!o.r !== !!i.r || freqOf(o) !== freqOf(i)) });
     S.imp = { items: out, cats, added, removed, changed, byId, people: base.people };
     S.editing = true; drawImp();
     $("#impBox").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1036,7 +1140,7 @@ $("#xlIn").onchange = async e => {
 function drawImp() {
   const m = S.imp, box = $("#impBox"); if (!box) return;
   const desc = (o, i) => { const d = []; if (o.c !== i.c) d.push(`${o.c}→${i.c}`); if ((o.u || "") !== i.u) d.push(`單位 ${o.u || "—"}→${i.u || "—"}`);
-    if ((minOf(o) || 0) !== (minOf(i) || 0)) d.push(`安全 ${minOf(o) || "—"}→${minOf(i) || "—"}`); if (!!o.r !== !!i.r) d.push(i.r ? "設為必點" : "取消必點"); return d.join("，") };
+    if ((minOf(o) || 0) !== (minOf(i) || 0)) d.push(`安全 ${minOf(o) || "—"}→${minOf(i) || "—"}`); if (!!o.r !== !!i.r) d.push(i.r ? "設為必點" : "取消必點"); if (freqOf(o) !== freqOf(i)) d.push(freqLabel(freqOf(i)) || "改回每天點"); return d.join("，") };
   box.innerHTML = `<div class="diffbox">
     <div>共 <b>${m.items.length}</b> 項，分類 ${m.cats.map(esc).join("、")}</div>
     ${m.added.length ? `<div class="a">新增 ${m.added.length}：${m.added.map(i => esc(i.n + (i.u ? `(${i.u})` : ""))).join("、")}</div>` : ""}
