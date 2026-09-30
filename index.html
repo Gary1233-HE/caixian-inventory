@@ -265,6 +265,23 @@ select.in{appearance:auto}
 .viewer .vi{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding-bottom:var(--safe-b)}
 .viewer .vi img{max-width:100%;max-height:100%;object-fit:contain}
 .viewer .vi img.z{max-width:none;max-height:none;width:200%}
+.viewer .vi img.stk-img{background:#fff}
+.viewer .vi img.stk-img.z{width:420%}
+.viewer .vi:has(img.z){align-items:flex-start;justify-content:flex-start}
+.fab{position:fixed;z-index:35;display:flex;gap:8px}
+.fab button{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:14px;color:#fff;font-weight:900;font-size:15px;box-shadow:0 6px 18px rgba(20,30,25,.22)}
+.fab svg{width:20px;height:20px;flex:none}
+.fab .f-line{background:#06C755}.fab .f-print{background:#2F6FD6}.fab .f-xlsx{background:#E07B00}
+.fab button:active{filter:brightness(.92)}
+@media (min-width:1000px){
+  .fab{right:max(16px, calc((100vw - 760px) / 2 - 240px));top:50%;transform:translateY(-50%);flex-direction:column;width:210px}
+  .fab button{padding:16px 12px;justify-content:flex-start}
+}
+@media (max-width:999px){
+  .fab{left:10px;right:10px;bottom:calc(64px + var(--safe-b))}
+  .fab button{flex:1;padding:12px 4px;font-size:12.5px;flex-direction:column;gap:3px}
+  body.fab-on #vSum{padding-bottom:calc(150px + var(--safe-b))}
+}
 @media (min-width:700px){main,.tabs{max-width:760px;margin:0 auto}.rows{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}}
 </style>
 </head>
@@ -333,7 +350,12 @@ select.in{appearance:auto}
 
 <input type="file" id="phIn" accept="image/*" multiple class="hide">
 <input type="file" id="xlIn" accept=".xlsx,.xls,.csv" class="hide">
-<div class="viewer hide" id="viewer"><div class="vb"><span class="i" id="vInfo"></span><button class="del" id="vDel">刪除</button><button id="vX">關閉</button></div><div class="vi" id="vImg"></div></div>
+<div class="viewer hide" id="viewer"><div class="vb"><span class="i" id="vInfo"></span><button class="hide" id="vShare">分享</button><button class="hide" id="vDl">下載</button><button class="del" id="vDel">刪除</button><button id="vX">關閉</button></div><div class="vi" id="vImg"></div></div>
+<div class="fab hide" id="fab" aria-label="傳送與列印">
+  <button class="f-line" data-fab="line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>複製 LINE 文字</span></button>
+  <button class="f-print" data-fab="print"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg><span>A4 列印點貨結果</span></button>
+  <button class="f-xlsx" data-fab="xlsx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13l6 6M15 13l-6 6"/></svg><span>匯出這天 Excel</span></button>
+</div>
 <div class="toast" id="toast"></div>
 
 <script type="module">
@@ -744,10 +766,13 @@ function setView(v) {
   if (v !== "Count" && S.q != null) { S.q = null; $("#sbar").classList.add("hide"); $("#tabs").classList.remove("hide") }
   if (v !== "Count") document.documentElement.style.removeProperty("--catbg");
   ["Count", "Sum", "Hist", "Set"].forEach(x => $("#v" + x).classList.toggle("hide", x !== v));
+  $("#fab").classList.toggle("hide", v !== "Sum"); document.body.classList.toggle("fab-on", v === "Sum");
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   window.scrollTo(0, 0); render();
 }
 $("#nav").onclick = e => { const b = e.target.closest("[data-v]"); if (b) setView(b.dataset.v) };
+/* 總覽的浮動按鈕（電腦在右邊、手機在底部），跟著畫面 */
+$("#fab").onclick = e => { const b = e.target.closest("[data-fab]"); if (!b) return; if (b.dataset.fab === "line") return copyLine(); if (b.dataset.fab === "print") return printResult(); if (b.dataset.fab === "xlsx") return exportDay() };
 function dateLabel(d) { const [, m, dd] = d.split("-"); return `${+m}/${+dd}（${"日一二三四五六"[new Date(d + "T00:00").getDay()]}）` }
 function goItem(id) { const it = itemById(id); if (!it) return; S.cat = it.c; setView("Count"); openKp(id) }
 
@@ -757,32 +782,98 @@ function renderSum() {
   renderSumInner();
   if (keep) { const t = document.getElementById(keep.id); t.value = keep.v; t.focus(); try { t.setSelectionRange(keep.a, keep.b) } catch {} }
 }
-/* ===== 庫存總表（手機看的）：全部品項的數量，可篩選、搜尋 ===== */
-const STK_F = { all: "全部", need: "要補貨", zero: "缺貨", un: "未點", ok: "夠用" };
-function stockState(i, e) { if (!e) return isDue(i) ? "un" : "skip"; if (isOk(e)) return "ok"; if (isZero(e)) return "zero"; return needOf(i, e) > 0 ? "low" : "fine" }
-function stockList() {
-  const c = counts(), p = pcounts(), f = S.stkF || "all", q = norm(S.stkQ || "");
-  const pass = (i, st) => (f === "all" || (f === "need" && (st === "low" || st === "zero")) || (f === "zero" && st === "zero") || (f === "un" && st === "un") || (f === "ok" && st === "ok")) && (!q || norm(i.n).includes(q));
-  const html = S.cfg.cats.map(cat => {
-    const rs = itemsOf(cat).map(i => ({ i, e: c[i.id], pe: p[i.id], st: stockState(i, c[i.id]) })).filter(r => pass(r.i, r.st));
-    if (!rs.length) return "";
-    return `<div class="stk-c" style="--cc:${catColor(cat)};--ct:${catTint(cat)}"><div class="stk-ch">${esc(cat)}<small>${rs.length}</small></div>
-      ${rs.map(({ i, e, pe, st }) => { const nd = needOf(i, e);
-        return `<button class="stk-r ${st}" data-go="${i.id}"><span class="sn"><b>${esc(i.n)}</b><small>${[pe ? `上次 ${qtyText(i, pe)}` : "", minOf(i) ? `安全 ${fmt(minOf(i))}${units(i)[0]}` : "", freqLabel(freqOf(i))].filter(Boolean).join("　")}</small></span>
-          <span class="sq">${st === "un" ? `<span class="su">未點</span>` : st === "skip" ? `<span class="su">今天不用點</span>` : st === "zero" ? `<span class="sz">缺貨</span>` : st === "ok" ? `<span class="sk">夠用</span>` : esc(qtyText(i, e))}</span>
-          <span class="sneed">${nd > 0 ? `補 ${fmt(nd)}` : ""}</span></button>` }).join("")}</div>`;
-  }).join("");
-  return html || `<div class="empty" style="padding:14px">沒有符合的品項</div>`;
+/* ===== 庫存總表：畫成一張圖片，可以放大看、下載 ===== */
+async function stockImage() {
+  const c = counts(), cats = S.cfg.cats.filter(cat => itemsOf(cat).length);
+  const maxn = Math.max(...cats.map(cat => itemsOf(cat).length));
+  const SC = 2, CW = 330, RH = 38, PAD = 24, HEAD = 128, CH = 44, SUB = 30;
+  const need = items().filter(i => needOf(i, c[i.id]) > 0), zero = items().filter(i => isZero(c[i.id]));
+  const note = ((S.day && S.day.note) || "").trim();
+  const footLines = [need.length ? `要補貨：${need.map(i => `${i.n} ${fmt(needOf(i, c[i.id]))}${units(i)[0]}`).join("、")}` : "", zero.length ? `缺貨：${zero.map(i => i.n).join("、")}` : "", note ? `備註：${note}` : ""].filter(Boolean);
+  const W = PAD * 2 + CW * cats.length;
+  try { await document.fonts.load('700 20px "Noto Sans TC"'); await document.fonts.load('20px "Noto Sans TC"') } catch {}
+  const F = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+  const cv = document.createElement("canvas"), g = cv.getContext("2d");
+  /* 先算頁尾要幾行 */
+  g.font = `18px ${F}`;
+  const wrap = (t, w) => { const out = []; let line = ""; for (const ch of t) { if (g.measureText(line + ch).width > w) { out.push(line); line = ch } else line += ch } if (line) out.push(line); return out };
+  const foot = footLines.flatMap(t => wrap(t, W - PAD * 2 - 20));
+  const H = HEAD + CH + SUB + maxn * RH + 24 + (foot.length ? foot.length * 28 + 24 : 0) + PAD;
+  cv.width = W * SC; cv.height = H * SC; g.scale(SC, SC);
+  g.fillStyle = "#fff"; g.fillRect(0, 0, W, H);
+  g.textBaseline = "middle";
+  const fit = (t, x, y, w, size, weight = "400", color = "#111", align = "left") => {
+    let sz = size; g.font = `${weight} ${sz}px ${F}`;
+    while (g.measureText(t).width > w - 8 && sz > 10) { sz -= 1; g.font = `${weight} ${sz}px ${F}` }
+    g.fillStyle = color; g.textAlign = align;
+    g.fillText(t, align === "center" ? x + w / 2 : align === "right" ? x + w - 5 : x + 5, y);
+  };
+  /* 標題 */
+  const who = [...new Set(Object.values(c).map(x => x.by).filter(Boolean))].join("、"), dn = S.day && S.day.done, st = stats();
+  fit("採鮮農產行　每日庫存點貨結果", PAD, 40, 700, 30, "900");
+  fit(`日期：${dateLabel(S.date)}　　清點人員：${who || "—"}　　${dn ? `✓ ${dn.by} ${hm(dn.t)} 完成` : `點了 ${st.done}/${st.total}（未完成）`}`, PAD, 84, W - PAD * 2, 20, "500", "#333");
+  /* 圖例 */
+  const lg = [["低於安全量", "#C23B2E", null], ["缺", "#fff", "#C23B2E"], ["夠用", "#2E7A4C", null], ["未點", "#D5730A", null], ["免點", "#999", null]];
+  let lx = W - PAD; g.font = `600 15px ${F}`;
+  for (let k = lg.length - 1; k >= 0; k--) { const [t, col, bg] = lg[k], w = g.measureText(t).width + 14; lx -= w + 8; if (bg) { g.fillStyle = bg; g.fillRect(lx, 30, w, 24) } g.fillStyle = col; g.textAlign = "center"; g.fillText(t, lx + w / 2, 42) }
+  const y0 = HEAD, nW = CW * .52, uW = CW * .18, qW = CW - nW - uW;
+  g.lineWidth = 1;
+  cats.forEach((cat, ci) => {
+    const x = PAD + ci * CW, its = itemsOf(cat);
+    g.fillStyle = catTint(cat); g.fillRect(x, y0, CW, CH);
+    g.fillStyle = catColor(cat); g.fillRect(x, y0, CW, 5);
+    fit(cat, x, y0 + CH / 2 + 2, CW, 22, "900", "#111", "center");
+    g.fillStyle = "#f2f2f2"; g.fillRect(x, y0 + CH, CW, SUB);
+    fit("品名", x, y0 + CH + SUB / 2, nW, 14, "500", "#555", "center"); fit("單位", x + nW, y0 + CH + SUB / 2, uW, 14, "500", "#555", "center"); fit("數量", x + nW + uW, y0 + CH + SUB / 2, qW, 14, "500", "#555", "center");
+    for (let r = 0; r < maxn; r++) {
+      const i = its[r], y = y0 + CH + SUB + r * RH, cy = y + RH / 2 + 1;
+      if (r % 2) { g.fillStyle = "#fafafa"; g.fillRect(x, y, CW, RH) }
+      if (!i) continue;
+      const e = c[i.id];
+      fit((isReq(i) ? "★" : "") + i.n + (minOf(i) ? ` ≥${fmt(minOf(i))}` : ""), x, cy, nW, 19, "500");
+      fit(units(i).join("/"), x + nW, cy, uW, 15, "400", "#666", "center");
+      const qx = x + nW + uW;
+      if (e == null) fit(isDue(i) ? "未點" : "免點", qx, cy, qW, 15, "500", isDue(i) ? "#D5730A" : "#aaa", "center");
+      else if (isOk(e)) fit("夠用", qx, cy, qW, 17, "700", "#2E7A4C", "center");
+      else if (isZero(e)) { g.fillStyle = "#C23B2E"; g.fillRect(qx + 1, y + 1, qW - 2, RH - 2); fit("缺", qx, cy, qW, 19, "900", "#fff", "center") }
+      else fit(isMulti(i, e) ? qtyText(i, e) : fmt(firstVal(i, e)), qx, cy, qW, 21, "700", isLow(i, e) ? "#C23B2E" : "#111", "center");
+    }
+    /* 格線 */
+    g.strokeStyle = "#999";
+    for (let r = 0; r <= maxn; r++) { const y = y0 + CH + SUB + r * RH; g.beginPath(); g.moveTo(x, y); g.lineTo(x + CW, y); g.stroke() }
+    [nW, nW + uW].forEach(dx => { g.beginPath(); g.moveTo(x + dx, y0 + CH); g.lineTo(x + dx, y0 + CH + SUB + maxn * RH); g.stroke() });
+    g.strokeStyle = "#111"; g.lineWidth = 2; g.strokeRect(x, y0, CW, CH + SUB + maxn * RH); g.lineWidth = 1;
+  });
+  if (foot.length) {
+    const fy = y0 + CH + SUB + maxn * RH + 24;
+    g.strokeStyle = "#111"; g.lineWidth = 1.5; g.strokeRect(PAD, fy, W - PAD * 2, foot.length * 28 + 16);
+    foot.forEach((t, k) => fit(t, PAD + 6, fy + 22 + k * 28, W - PAD * 2 - 12, 18, "600"));
+  }
+  return cv.toDataURL("image/png");
+}
+let stkUrl = null;
+async function openStockImage() {
+  if (!Object.keys(counts()).length && !confirm("這天還沒有點貨資料，要看空白的總表嗎？")) return;
+  $("#vInfo").textContent = `庫存總表　${dateLabel(S.date)}（點圖放大）`;
+  $("#vImg").innerHTML = `<div class="empty" style="color:#fff">產生圖片中…</div>`;
+  $("#vDel").classList.add("hide"); $("#vDl").classList.remove("hide"); if (navigator.share) $("#vShare").classList.remove("hide");
+  $("#viewer").classList.remove("hide"); vCur = null;
+  try { stkUrl = await stockImage(); $("#vImg").innerHTML = `<img src="${stkUrl}" alt="庫存總表" class="stk-img">` } catch (e) { err(e) }
+}
+const stkName = () => `採鮮庫存總表_${S.date.replace(/-/g, "")}.png`;
+function downloadStock() { if (!stkUrl) return; const a = document.createElement("a"); a.href = stkUrl; a.download = stkName(); document.body.appendChild(a); a.click(); a.remove(); toast("已下載；手機也可以長按圖片儲存") }
+async function shareStock() {
+  if (!stkUrl) return;
+  try { const blob = await (await fetch(stkUrl)).blob(), file = new File([blob], stkName(), { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) await navigator.share({ files: [file], title: "庫存總表" }); else downloadStock();
+  } catch (e) { if (e && e.name !== "AbortError") downloadStock() }
 }
 function stockPanel() {
-  const c = counts(), all = items(), f = S.stkF || "all";
-  const st = all.map(i => stockState(i, c[i.id]));
-  const cnt = { all: all.length, need: st.filter(x => x === "low" || x === "zero").length, zero: st.filter(x => x === "zero").length, un: st.filter(x => x === "un").length, ok: st.filter(x => x === "ok").length };
+  const c = counts(), all = items();
+  const zero = all.filter(i => isZero(c[i.id])).length, need = all.filter(i => needOf(i, c[i.id]) > 0).length, done = Object.keys(c).length;
   return `<div class="panel stk-p"><h3>庫存總表 <span class="c">${dateLabel(S.date)}</span></h3>
-    <div class="stk-f">${Object.entries(STK_F).map(([k, v]) => `<button class="${k === f ? "on" : ""}" data-stkf="${k}">${v}<b>${cnt[k]}</b></button>`).join("")}</div>
-    <input class="in stk-q" id="stkQ" type="search" placeholder="搜尋品項" value="${esc(S.stkQ || "")}" autocomplete="off">
-    <div id="stkList">${stockList()}</div>
-  </div>`;
+    <p class="muted" style="margin:0 0 10px">點了 ${done} 項　要補貨 ${need}　缺貨 ${zero}</p>
+    <button class="btn pri" id="bStock">🖼 查看庫存總表（圖片）</button></div>`;
 }
 function renderSumInner() {
   const c = counts(), p = pcounts(), all = items(), s = stats(), dn = S.day && S.day.done;
@@ -822,15 +913,12 @@ function renderSumInner() {
     ${drops.map(i => `<tr data-go="${i.id}"><td>${esc(i.n)}</td><td class="r">${fmt(firstVal(i, p[i.id]))}</td><td class="r">${fmt(firstVal(i, c[i.id]))} ${esc(units(i)[0])}</td></tr>`).join("")}</table></div>` : ""}
   <div class="panel"><h3>還沒點（非必點） <span class="c">${miss.length}</span></h3>
     ${miss.length ? `<div class="chips">${miss.map(i => `<button class="chip" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>` : `<p class="muted" style="margin:0">全部點完了</p>`}</div>
-  <div class="grid2" style="margin-bottom:8px"><button class="btn pri" id="bLine">複製 LINE 文字</button><button class="btn" id="bXls">匯出這天 Excel</button></div>
-  <button class="btn" id="bPrintR2" style="margin-bottom:12px">🖨 A4 列印這天點貨結果</button>`;
+`;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
-  $("#vSum").querySelectorAll("[data-stkf]").forEach(b => b.onclick = () => { S.stkF = b.dataset.stkf; renderSum() });
-  $("#stkQ").oninput = e => { S.stkQ = e.target.value; $("#stkList").innerHTML = stockList(); $("#stkList").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go)) };
+  $("#bStock").onclick = openStockImage;
   $("#vSum").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
   let nt; $("#note").oninput = e => { clearTimeout(nt); const v = e.target.value; nt = setTimeout(() => store.setNote(S.date, v, S.me || ""), 700) };
-  $("#bLine").onclick = copyLine; $("#bXls").onclick = exportDay;
-  $("#bPrintR2").onclick = printResult; if ($("#bPrintR")) $("#bPrintR").onclick = printResult;
+  if ($("#bPrintR")) $("#bPrintR").onclick = printResult;
   $("#phAdd").onclick = () => { if (needMe()) return; $("#phIn").value = ""; $("#phIn").click() };
   if ($("#bDone")) $("#bDone").onclick = finish;
   if ($("#bUndo")) $("#bUndo").onclick = () => store.setDone(S.date, null);
@@ -1023,7 +1111,9 @@ async function addPhotos(files) {
 }
 $("#phIn").onchange = e => { const f = [...e.target.files]; if (f.length) addPhotos(f) };
 let vCur = null;
+$("#vDl").onclick = downloadStock; $("#vShare").onclick = shareStock;
 async function openViewer(id) {
+  $("#vDel").classList.remove("hide"); $("#vDl").classList.add("hide"); $("#vShare").classList.add("hide");
   const m = ((S.day && S.day.photos) || {})[id]; if (!m) return; vCur = { d: S.date, id };
   $("#vInfo").textContent = `${m.by || ""}　${new Date(m.t).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
   $("#vImg").innerHTML = `<img src="${m.th}" alt="備註照片">`; $("#viewer").classList.remove("hide");
