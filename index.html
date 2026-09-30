@@ -262,12 +262,20 @@ select.in{appearance:auto}
 .viewer .vb .i{flex:1;font-size:14px;opacity:.8}
 .viewer .vb button{color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:7px 12px;font-size:14px}
 .viewer .vb .del{color:#FF9D92;border-color:rgba(255,157,146,.5)}
-.viewer .vi{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding-bottom:var(--safe-b)}
-.viewer .vi img{max-width:100%;max-height:100%;object-fit:contain}
-.viewer .vi img.z{max-width:none;max-height:none;width:200%}
+.viewer .vi{flex:1;overflow:hidden;position:relative;touch-action:none;margin-bottom:var(--safe-b);cursor:grab}
+.viewer .vi img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;max-height:none;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:default}
+.viewer .vi .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.viewer .vz{display:flex;align-items:center;gap:4px;color:#fff;font-family:var(--mono);font-size:12px}
+.viewer .vz button{padding:4px 11px!important;font-size:16px!important}
+#vZoomT{min-width:42px;text-align:center}
 .viewer .vi img.stk-img{background:#fff}
-.viewer .vi img.stk-img.z{width:420%}
-.viewer .vi:has(img.z){align-items:flex-start;justify-content:flex-start}
+
+/* 點貨頁左邊：備註＋拍照 */
+.lfab{position:fixed;z-index:35;display:flex;align-items:center;gap:6px;background:var(--ink);color:#fff;border-radius:16px;font-weight:900;box-shadow:0 6px 18px rgba(20,30,25,.25)}
+.lfab svg{width:20px;height:20px;flex:none}
+.lfab b{position:absolute;top:-8px;right:-8px;background:var(--low);color:#fff;font-size:11px;border-radius:9px;padding:1px 6px;line-height:16px}
+@media (min-width:1000px){.lfab{left:max(16px, calc((100vw - 760px) / 2 - 170px));top:50%;transform:translateY(-50%);flex-direction:column;padding:16px 18px;font-size:15px}}
+@media (max-width:999px){.lfab{left:12px;bottom:calc(72px + var(--safe-b));padding:12px 14px;font-size:14px}}
 .fab{position:fixed;z-index:35;display:flex;gap:8px}
 .fab button{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:14px;color:#fff;font-weight:900;font-size:15px;box-shadow:0 6px 18px rgba(20,30,25,.22)}
 .fab svg{width:20px;height:20px;flex:none}
@@ -351,9 +359,14 @@ select.in{appearance:auto}
   <div class="pick" id="ppList"></div>
 </section>
 
+<section class="sheet" id="noteSheet" aria-label="備註">
+  <div class="sh-head"><div><b id="noteTitle">備註</b><span>缺貨、異常、要補的貨；手寫單可以拍照上傳</span></div><button class="sh-x" id="noteClose" aria-label="關閉">×</button></div>
+  <div id="noteBody" style="overflow:auto"></div>
+</section>
+<button class="lfab hide" id="noteFab" aria-label="備註和拍照"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg><span>備註</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><b id="noteBadge" class="hide"></b></button>
 <input type="file" id="phIn" accept="image/*" multiple class="hide">
 <input type="file" id="xlIn" accept=".xlsx,.xls,.csv" class="hide">
-<div class="viewer hide" id="viewer"><div class="vb"><span class="i" id="vInfo"></span><button class="hide" id="vShare">分享</button><button class="hide" id="vDl">下載</button><button class="del" id="vDel">刪除</button><button id="vX">關閉</button></div><div class="vi" id="vImg"></div></div>
+<div class="viewer hide" id="viewer"><div class="vb"><span class="i" id="vInfo"></span><span class="vz"><button id="vZout" aria-label="縮小">−</button><span id="vZoomT">100%</span><button id="vZin" aria-label="放大">＋</button></span><button class="hide" id="vShare">分享</button><button class="hide" id="vDl">下載</button><button class="del" id="vDel">刪除</button><button id="vX">關閉</button></div><div class="vi" id="vImg"></div></div>
 <div class="fab hide" id="fab" aria-label="傳送與列印">
   <button class="f-stk" data-fab="stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/></svg><span class="l">庫存總表</span><span class="s">庫存總表</span></button>
   <button class="f-print" data-fab="print"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg><span class="l">A4 列印點貨結果</span><span class="s">A4列印</span></button>
@@ -541,6 +554,7 @@ function render() {
   if (S.view === "Hist") renderHist();
   if (S.view === "Set" && !S.editing) renderSet();
   if (S.kp) renderKp();
+  $("#noteFab").classList.toggle("hide", S.view !== "Count"); renderNoteFab(); renderNoteSheet();
 }
 function stats() {
   const c = counts(), all = items();
@@ -760,7 +774,7 @@ function openPeople() {
   $("#pp").classList.add("show"); $("#scrim").classList.add("show");
 }
 function closePeople() { $("#pp").classList.remove("show"); $("#scrim").classList.remove("show") }
-$("#who").onclick = openPeople; $("#ppClose").onclick = closePeople; $("#scrim").onclick = closePeople;
+$("#who").onclick = openPeople; $("#ppClose").onclick = closePeople; $("#scrim").onclick = () => { closePeople(); closeNote() };
 $("#ppList").onclick = e => { const b = e.target.closest("[data-p]"); if (!b) return; S.me = b.dataset.p; try { localStorage.setItem("caixian-inv-me", S.me) } catch {} renderWho(); closePeople(); toast(S.me + " 開始點貨") };
 
 /* ================= views ================= */
@@ -770,6 +784,7 @@ function setView(v) {
   if (v !== "Count") document.documentElement.style.removeProperty("--catbg");
   ["Count", "Sum", "Hist", "Set"].forEach(x => $("#v" + x).classList.toggle("hide", x !== v));
   $("#fab").classList.toggle("hide", v !== "Sum"); document.body.classList.toggle("fab-on", v === "Sum");
+  $("#noteFab").classList.toggle("hide", v !== "Count");
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v));
   window.scrollTo(0, 0); render();
 }
@@ -857,7 +872,7 @@ async function stockImage() {
 let stkUrl = null;
 async function openStockImage() {
   if (!Object.keys(counts()).length && !confirm("這天還沒有點貨資料，要看空白的總表嗎？")) return;
-  $("#vInfo").textContent = `庫存總表　${dateLabel(S.date)}（點圖放大）`;
+  $("#vInfo").textContent = `庫存總表　${dateLabel(S.date)}`;
   $("#vImg").innerHTML = `<div class="empty" style="color:#fff">產生圖片中…</div>`;
   $("#vDel").classList.add("hide"); $("#vDl").classList.remove("hide"); if (navigator.share) $("#vShare").classList.remove("hide");
   $("#viewer").classList.remove("hide"); vCur = null;
@@ -888,11 +903,6 @@ function renderSumInner() {
   const byCat = S.cfg.cats.map(cat => { const its = itemsOf(cat).filter(isActive); return { cat, d: its.filter(i => c[i.id] != null).length, n: its.length } });
   const skipN = all.filter(i => !isActive(i)).length;
   $("#vSum").innerHTML = `
-  <div class="panel"><h3>備註</h3>
-    <textarea class="note" id="note" placeholder="缺貨、異常、要補的貨">${esc((S.day && S.day.note) || "")}</textarea>
-    ${S.day && S.day.noteBy ? `<p class="muted" style="margin:6px 0 0">最後編輯：${esc(S.day.noteBy)}</p>` : ""}
-    <div class="phs">${photoList().map(([id, m]) => `<button class="ph" data-ph="${id}"><img src="${m.th}" alt="備註照片"><span>${esc(m.by || "")} ${hm(m.t)}</span></button>`).join("")}${S.uploading ? `<div class="ph up">上傳中 ${S.uploading}…</div>` : ""}</div>
-    <button class="btn" id="phAdd" style="margin-top:10px">📷 拍照 / 上傳手寫單</button></div>
   <div class="panel ${dn ? "fin" : ""}"><h3>${dateLabel(S.date)} 進度 <span class="c">${s.done}/${s.total}</span></h3>
     ${byCat.map(x => `<div class="pcat" style="--cc:${catColor(x.cat)}"><span class="nm">${esc(x.cat)}</span><span class="tr"><i style="width:${x.n ? x.d / x.n * 100 : 0}%"></i></span><span class="n">${x.d}/${x.n}</span></div>`).join("")}
     ${skipN ? `<p class="muted" style="margin:10px 0 0">另有 ${skipN} 項今天不用點（隔天點或貨運前一天點）</p>` : ""}
@@ -918,10 +928,7 @@ function renderSumInner() {
 `;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
 
-  $("#vSum").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
-  let nt; $("#note").oninput = e => { clearTimeout(nt); const v = e.target.value; nt = setTimeout(() => store.setNote(S.date, v, S.me || ""), 700) };
   if ($("#bPrintR")) $("#bPrintR").onclick = printResult;
-  $("#phAdd").onclick = () => { if (needMe()) return; $("#phIn").value = ""; $("#phIn").click() };
   if ($("#bDone")) $("#bDone").onclick = finish;
   if ($("#bUndo")) $("#bUndo").onclick = () => store.setDone(S.date, null);
 }
@@ -1093,6 +1100,28 @@ function paperXls() {
   saveWb([["每日庫存表", ws]], `每日庫存表_${today()}.xlsx`);
 }
 
+/* ---------- 備註＋拍照（點貨頁左邊的按鈕） ---------- */
+function renderNoteFab() {
+  const n = photoList().length, has = !!((S.day && S.day.note) || "").trim(), b = $("#noteBadge");
+  b.textContent = n ? `${n}張` : has ? "有" : ""; b.classList.toggle("hide", !n && !has);
+}
+function renderNoteSheet() {
+  if (!$("#noteSheet").classList.contains("show")) return;
+  const ae = document.activeElement, keep = ae && ae.id === "note" ? { v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
+  $("#noteTitle").textContent = `備註　${dateLabel(S.date)}`;
+  $("#noteBody").innerHTML = `<textarea class="note" id="note" placeholder="缺貨、異常、要補的貨">${esc((S.day && S.day.note) || "")}</textarea>
+    ${S.day && S.day.noteBy ? `<p class="muted" style="margin:6px 0 0">最後編輯：${esc(S.day.noteBy)}</p>` : ""}
+    <div class="phs">${photoList().map(([id, m]) => `<button class="ph" data-ph="${id}"><img src="${m.th}" alt="備註照片"><span>${esc(m.by || "")} ${hm(m.t)}</span></button>`).join("")}${S.uploading ? `<div class="ph up">上傳中 ${S.uploading}…</div>` : ""}</div>
+    <button class="btn pri" id="phAdd" style="margin-top:10px">📷 拍照 / 上傳手寫單</button>`;
+  let nt; $("#note").oninput = e => { clearTimeout(nt); const v = e.target.value; nt = setTimeout(() => store.setNote(S.date, v, S.me || ""), 700) };
+  $("#phAdd").onclick = () => { if (needMe()) return; $("#phIn").value = ""; $("#phIn").click() };
+  $("#noteBody").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
+  if (keep) { const t = $("#note"); t.value = keep.v; t.focus(); t.setSelectionRange(keep.a, keep.b) }
+}
+$("#noteFab").onclick = () => { $("#noteSheet").classList.add("show"); $("#scrim").classList.add("show"); renderNoteSheet() };
+function closeNote() { $("#noteSheet").classList.remove("show"); $("#scrim").classList.remove("show") }
+$("#noteClose").onclick = closeNote;
+
 /* ---------- photos ---------- */
 function photoList() { return Object.entries((S.day && S.day.photos) || {}).sort((a, b) => a[1].t - b[1].t) }
 function loadImg(file) { return new Promise((ok, no) => { const u = URL.createObjectURL(file), im = new Image(); im.onload = () => { ok(im); setTimeout(() => URL.revokeObjectURL(u), 1000) }; im.onerror = () => no(new Error("讀不到這張圖片")); im.src = u }) }
@@ -1101,7 +1130,7 @@ function shrink(im, max, q) { const k = Math.min(1, max / Math.max(im.naturalWid
 async function addPhotos(files) {
   const d = S.date;
   for (let n = 0; n < files.length; n++) {
-    S.uploading = `${n + 1}/${files.length}`; if (S.view === "Sum") renderSum();
+    S.uploading = `${n + 1}/${files.length}`; renderNoteSheet();
     try {
       const im = await loadImg(files[n]);
       let max = 1800, q = .75, full = shrink(im, max, q);
@@ -1109,7 +1138,7 @@ async function addPhotos(files) {
       await store.addPhoto(d, "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), full, { by: S.me, t: Date.now(), th: shrink(im, 240, .6) });
     } catch (e) { err(e) }
   }
-  S.uploading = null; if (S.view === "Sum") renderSum(); toast("照片已上傳");
+  S.uploading = null; renderNoteSheet(); renderNoteFab(); toast("照片已上傳");
 }
 $("#phIn").onchange = e => { const f = [...e.target.files]; if (f.length) addPhotos(f) };
 let vCur = null;
@@ -1123,7 +1152,53 @@ async function openViewer(id) {
 }
 function closeViewer() { vCur = null; $("#viewer").classList.add("hide"); $("#vImg").innerHTML = "" }
 $("#vX").onclick = closeViewer;
-$("#vImg").onclick = e => { if (e.target.tagName === "IMG") e.target.classList.toggle("z") };
+/* ===== 圖片自由縮放：兩指捏合、滑鼠滾輪、拖曳移動、點兩下放大／還原 ===== */
+const ZV = { s: 1, x: 0, y: 0, img: null, pts: new Map(), pinch: null, pan: null, lastTap: 0 };
+function zApply() { if (ZV.img) ZV.img.style.transform = `translate(${ZV.x}px,${ZV.y}px) scale(${ZV.s})` }
+function zClamp() {
+  const box = $("#vImg").getBoundingClientRect(), w = ZV.img.offsetWidth * ZV.s, h = ZV.img.offsetHeight * ZV.s;
+  ZV.x = w <= box.width ? (box.width - w) / 2 : Math.min(0, Math.max(box.width - w, ZV.x));
+  ZV.y = h <= box.height ? (box.height - h) / 2 : Math.min(0, Math.max(box.height - h, ZV.y));
+}
+function zFit() {
+  const img = $("#vImg img"); if (!img) return; ZV.img = img;
+  const box = $("#vImg").getBoundingClientRect(), k = Math.min(box.width / img.naturalWidth, box.height / img.naturalHeight, 1);
+  img.style.width = img.naturalWidth * k + "px"; img.style.height = img.naturalHeight * k + "px";
+  ZV.s = 1; ZV.x = 0; ZV.y = 0; zClamp(); zApply(); zBtns();
+}
+/* 以畫面上某一點為中心縮放 */
+function zTo(ns, cx, cy) {
+  ns = Math.max(1, Math.min(10, ns));
+  const box = $("#vImg").getBoundingClientRect(), px = cx - box.left, py = cy - box.top;
+  ZV.x = px - (px - ZV.x) * ns / ZV.s; ZV.y = py - (py - ZV.y) * ns / ZV.s; ZV.s = ns;
+  zClamp(); zApply(); zBtns();
+}
+function zBtns() { const t = $("#vZoomT"); if (t) t.textContent = Math.round(ZV.s * 100) + "%" }
+const vi = $("#vImg");
+new MutationObserver(() => { const img = $("#vImg img"); if (!img) { ZV.img = null; return } if (img === ZV.img) return; if (img.complete) zFit(); else img.onload = zFit }).observe(vi, { childList: true });
+window.addEventListener("resize", () => { if (ZV.img) zFit() });
+vi.addEventListener("pointerdown", e => {
+  if (!ZV.img) return; vi.setPointerCapture(e.pointerId); ZV.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ZV.pts.size === 2) { const [a, b] = [...ZV.pts.values()]; ZV.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), s: ZV.s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; ZV.pan = null }
+  else if (ZV.pts.size === 1) {
+    const now = Date.now();
+    if (now - ZV.lastTap < 300) { zTo(ZV.s > 1.2 ? 1 : 3, e.clientX, e.clientY); ZV.lastTap = 0; return }
+    ZV.lastTap = now; ZV.pan = { x: e.clientX, y: e.clientY, ox: ZV.x, oy: ZV.y };
+  }
+});
+vi.addEventListener("pointermove", e => {
+  if (!ZV.pts.has(e.pointerId)) return; ZV.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ZV.pinch && ZV.pts.size >= 2) {
+    const [a, b] = [...ZV.pts.values()], d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    zTo(ZV.pinch.s * d / ZV.pinch.d, mx, my);
+    ZV.x += mx - ZV.pinch.mx; ZV.y += my - ZV.pinch.my; ZV.pinch.mx = mx; ZV.pinch.my = my; zClamp(); zApply();
+  } else if (ZV.pan) { ZV.x = ZV.pan.ox + e.clientX - ZV.pan.x; ZV.y = ZV.pan.oy + e.clientY - ZV.pan.y; zClamp(); zApply() }
+});
+const zUp = e => { ZV.pts.delete(e.pointerId); if (ZV.pts.size < 2) ZV.pinch = null; if (!ZV.pts.size) ZV.pan = null; else if (ZV.pts.size === 1) { const p = [...ZV.pts.values()][0]; ZV.pan = { x: p.x, y: p.y, ox: ZV.x, oy: ZV.y } } };
+vi.addEventListener("pointerup", zUp); vi.addEventListener("pointercancel", zUp);
+vi.addEventListener("wheel", e => { if (!ZV.img) return; e.preventDefault(); zTo(ZV.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), e.clientX, e.clientY) }, { passive: false });
+$("#vZin").onclick = () => { const b = vi.getBoundingClientRect(); zTo(ZV.s * 1.5, b.left + b.width / 2, b.top + b.height / 2) };
+$("#vZout").onclick = () => { const b = vi.getBoundingClientRect(); zTo(ZV.s / 1.5, b.left + b.width / 2, b.top + b.height / 2) };
 $("#vDel").onclick = async () => { if (!vCur || !confirm("刪除這張照片？")) return; const { d, id } = vCur; closeViewer(); try { await store.delPhoto(d, id); toast("照片已刪除") } catch (e) { err(e) } };
 
 /* ---------- settings ---------- */
