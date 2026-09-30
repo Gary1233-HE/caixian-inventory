@@ -193,6 +193,25 @@ nav.bn .dot{position:absolute;top:6px;left:calc(50% + 8px);background:var(--warn
 .btn.warn{color:var(--warn);border-color:#EDC0BA}
 textarea.note{width:100%;min-height:80px;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);resize:vertical}
 .pcat{display:flex;align-items:center;gap:8px;margin:6px 0}
+.stk-f{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;margin-bottom:8px}.stk-f::-webkit-scrollbar{display:none}
+.stk-f button{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;font-weight:700;background:#fff}
+.stk-f button b{font-family:var(--mono);margin-left:5px;color:var(--muted)}
+.stk-f button.on{background:var(--ink);color:#fff;border-color:var(--ink)}.stk-f button.on b{color:var(--citrus)}
+.stk-q{margin-bottom:6px;padding:9px 10px}
+.stk-c{margin-top:8px}
+.stk-ch{position:sticky;top:var(--tabs-top,108px);z-index:2;background:var(--ct);border-left:4px solid var(--cc);font-weight:900;font-size:14px;padding:5px 8px;border-radius:6px}
+.stk-ch small{font-family:var(--mono);color:var(--muted);margin-left:6px}
+.stk-r{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 4px;border-bottom:1px solid var(--line)}
+.stk-r .sn{flex:1;min-width:0}.stk-r .sn b{display:block;font-size:16px}
+.stk-r .sn small{display:block;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stk-r .sq{text-align:right;font-family:var(--mono);font-weight:700;font-size:16px;white-space:nowrap}
+.stk-r .sneed{width:50px;text-align:right;font-size:12px;font-weight:900;color:var(--low);flex:none}
+.stk-r .sz{color:#fff;background:var(--warn);border-radius:6px;padding:1px 7px;font-family:var(--sans);font-size:13px}
+.stk-r .su{color:var(--muted);font-family:var(--sans);font-weight:500;font-size:13px}
+.stk-r .sk{color:var(--ok);font-family:var(--sans);font-size:14px}
+.stk-r.low .sq{color:var(--low)}
+.stk-r.zero{background:#FFF4F2}
+.stk-r.skip{opacity:.55}
 .pcat .nm{width:64px;font-weight:700;font-size:14px}
 .pcat .tr{flex:1;height:8px;background:var(--bg);border-radius:4px;overflow:hidden}
 .pcat .tr i{display:block;height:100%;background:var(--cc)}
@@ -734,9 +753,36 @@ function goItem(id) { const it = itemById(id); if (!it) return; S.cat = it.c; se
 
 /* ---------- summary ---------- */
 function renderSum() {
-  const ae = document.activeElement, keep = ae && ae.id === "note" ? { v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
+  const ae = document.activeElement, keep = ae && (ae.id === "note" || ae.id === "stkQ") ? { id: ae.id, v: ae.value, a: ae.selectionStart, b: ae.selectionEnd } : null;
   renderSumInner();
-  if (keep) { const t = $("#note"); t.value = keep.v; t.focus(); t.setSelectionRange(keep.a, keep.b) }
+  if (keep) { const t = document.getElementById(keep.id); t.value = keep.v; t.focus(); try { t.setSelectionRange(keep.a, keep.b) } catch {} }
+}
+/* ===== 庫存總表（手機看的）：全部品項的數量，可篩選、搜尋 ===== */
+const STK_F = { all: "全部", need: "要補貨", zero: "缺貨", un: "未點", ok: "夠用" };
+function stockState(i, e) { if (!e) return isDue(i) ? "un" : "skip"; if (isOk(e)) return "ok"; if (isZero(e)) return "zero"; return needOf(i, e) > 0 ? "low" : "fine" }
+function stockList() {
+  const c = counts(), p = pcounts(), f = S.stkF || "all", q = norm(S.stkQ || "");
+  const pass = (i, st) => (f === "all" || (f === "need" && (st === "low" || st === "zero")) || (f === "zero" && st === "zero") || (f === "un" && st === "un") || (f === "ok" && st === "ok")) && (!q || norm(i.n).includes(q));
+  const html = S.cfg.cats.map(cat => {
+    const rs = itemsOf(cat).map(i => ({ i, e: c[i.id], pe: p[i.id], st: stockState(i, c[i.id]) })).filter(r => pass(r.i, r.st));
+    if (!rs.length) return "";
+    return `<div class="stk-c" style="--cc:${catColor(cat)};--ct:${catTint(cat)}"><div class="stk-ch">${esc(cat)}<small>${rs.length}</small></div>
+      ${rs.map(({ i, e, pe, st }) => { const nd = needOf(i, e);
+        return `<button class="stk-r ${st}" data-go="${i.id}"><span class="sn"><b>${esc(i.n)}</b><small>${[pe ? `上次 ${qtyText(i, pe)}` : "", minOf(i) ? `安全 ${fmt(minOf(i))}${units(i)[0]}` : "", freqLabel(freqOf(i))].filter(Boolean).join("　")}</small></span>
+          <span class="sq">${st === "un" ? `<span class="su">未點</span>` : st === "skip" ? `<span class="su">今天不用點</span>` : st === "zero" ? `<span class="sz">缺貨</span>` : st === "ok" ? `<span class="sk">夠用</span>` : esc(qtyText(i, e))}</span>
+          <span class="sneed">${nd > 0 ? `補 ${fmt(nd)}` : ""}</span></button>` }).join("")}</div>`;
+  }).join("");
+  return html || `<div class="empty" style="padding:14px">沒有符合的品項</div>`;
+}
+function stockPanel() {
+  const c = counts(), all = items(), f = S.stkF || "all";
+  const st = all.map(i => stockState(i, c[i.id]));
+  const cnt = { all: all.length, need: st.filter(x => x === "low" || x === "zero").length, zero: st.filter(x => x === "zero").length, un: st.filter(x => x === "un").length, ok: st.filter(x => x === "ok").length };
+  return `<div class="panel stk-p"><h3>庫存總表 <span class="c">${dateLabel(S.date)}</span></h3>
+    <div class="stk-f">${Object.entries(STK_F).map(([k, v]) => `<button class="${k === f ? "on" : ""}" data-stkf="${k}">${v}<b>${cnt[k]}</b></button>`).join("")}</div>
+    <input class="in stk-q" id="stkQ" type="search" placeholder="搜尋品項" value="${esc(S.stkQ || "")}" autocomplete="off">
+    <div id="stkList">${stockList()}</div>
+  </div>`;
 }
 function renderSumInner() {
   const c = counts(), p = pcounts(), all = items(), s = stats(), dn = S.day && S.day.done;
@@ -760,6 +806,7 @@ function renderSumInner() {
     ${dn ? `<p style="margin:10px 0 8px;color:var(--ok);font-weight:900">✓ ${esc(dn.by)} 在 ${hm(dn.t)} 完成點貨${dn.left ? `（${dn.left} 項未點）` : ""}</p><div class="grid2"><button class="btn" id="bUndo">取消完成，繼續點</button><button class="btn pri" id="bPrintR">🖨 A4 列印結果</button></div>`
       : `<button class="btn okb" id="bDone" style="margin-top:6px">完成點貨</button>`}
   </div>
+  ${stockPanel()}
   ${rq.length ? `<div class="panel alert"><h3>必點還沒點 <span class="c w">${rq.length}</span></h3>
     <p class="muted" style="margin:0 0 8px">這些沒點完不能按「完成點貨」</p>
     <div class="chips">${rq.map(i => `<button class="chip w" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>
@@ -778,6 +825,8 @@ function renderSumInner() {
   <div class="grid2" style="margin-bottom:8px"><button class="btn pri" id="bLine">複製 LINE 文字</button><button class="btn" id="bXls">匯出這天 Excel</button></div>
   <button class="btn" id="bPrintR2" style="margin-bottom:12px">🖨 A4 列印這天點貨結果</button>`;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
+  $("#vSum").querySelectorAll("[data-stkf]").forEach(b => b.onclick = () => { S.stkF = b.dataset.stkf; renderSum() });
+  $("#stkQ").oninput = e => { S.stkQ = e.target.value; $("#stkList").innerHTML = stockList(); $("#stkList").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go)) };
   $("#vSum").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
   let nt; $("#note").oninput = e => { clearTimeout(nt); const v = e.target.value; nt = setTimeout(() => store.setNote(S.date, v, S.me || ""), 700) };
   $("#bLine").onclick = copyLine; $("#bXls").onclick = exportDay;
