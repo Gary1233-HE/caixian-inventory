@@ -271,7 +271,8 @@ select.in{appearance:auto}
 .fab{position:fixed;z-index:35;display:flex;gap:8px}
 .fab button{display:flex;align-items:center;justify-content:center;gap:8px;border-radius:14px;color:#fff;font-weight:900;font-size:15px;box-shadow:0 6px 18px rgba(20,30,25,.22)}
 .fab svg{width:20px;height:20px;flex:none}
-.fab .f-line{background:#06C755}.fab .f-print{background:#2F6FD6}.fab .f-xlsx{background:#E07B00}
+.fab .s{display:none}
+.fab .f-stk{background:#7B4FC9}.fab .f-line{background:#06C755}.fab .f-print{background:#2F6FD6}.fab .f-xlsx{background:#E07B00}
 .fab button:active{filter:brightness(.92)}
 @media (min-width:1000px){
   .fab{right:max(16px, calc((100vw - 760px) / 2 - 240px));top:50%;transform:translateY(-50%);flex-direction:column;width:210px}
@@ -280,6 +281,8 @@ select.in{appearance:auto}
 @media (max-width:999px){
   .fab{left:10px;right:10px;bottom:calc(64px + var(--safe-b))}
   .fab button{flex:1;padding:12px 4px;font-size:12.5px;flex-direction:column;gap:3px}
+  .fab{gap:6px}.fab button{font-size:12.5px;padding:11px 2px;white-space:nowrap}
+  .fab .l{display:none}.fab .s{display:inline}
   body.fab-on #vSum{padding-bottom:calc(150px + var(--safe-b))}
 }
 @media (min-width:700px){main,.tabs{max-width:760px;margin:0 auto}.rows{display:grid;grid-template-columns:1fr 1fr;gap:0 8px}}
@@ -352,9 +355,9 @@ select.in{appearance:auto}
 <input type="file" id="xlIn" accept=".xlsx,.xls,.csv" class="hide">
 <div class="viewer hide" id="viewer"><div class="vb"><span class="i" id="vInfo"></span><button class="hide" id="vShare">分享</button><button class="hide" id="vDl">下載</button><button class="del" id="vDel">刪除</button><button id="vX">關閉</button></div><div class="vi" id="vImg"></div></div>
 <div class="fab hide" id="fab" aria-label="傳送與列印">
-  <button class="f-line" data-fab="line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg><span>複製 LINE 文字</span></button>
-  <button class="f-print" data-fab="print"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg><span>A4 列印點貨結果</span></button>
-  <button class="f-xlsx" data-fab="xlsx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13l6 6M15 13l-6 6"/></svg><span>匯出這天 Excel</span></button>
+  <button class="f-stk" data-fab="stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10M15 10v10"/></svg><span class="l">庫存總表</span><span class="s">庫存總表</span></button>
+  <button class="f-print" data-fab="print"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg><span class="l">A4 列印點貨結果</span><span class="s">A4列印</span></button>
+  <button class="f-xlsx" data-fab="xlsx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M9 13l6 6M15 13l-6 6"/></svg><span class="l">匯出這天 Excel</span><span class="s">匯出Excel</span></button>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -772,7 +775,7 @@ function setView(v) {
 }
 $("#nav").onclick = e => { const b = e.target.closest("[data-v]"); if (b) setView(b.dataset.v) };
 /* 總覽的浮動按鈕（電腦在右邊、手機在底部），跟著畫面 */
-$("#fab").onclick = e => { const b = e.target.closest("[data-fab]"); if (!b) return; if (b.dataset.fab === "line") return copyLine(); if (b.dataset.fab === "print") return printResult(); if (b.dataset.fab === "xlsx") return exportDay() };
+$("#fab").onclick = e => { const b = e.target.closest("[data-fab]"); if (!b) return; if (b.dataset.fab === "line") return copyLine(); if (b.dataset.fab === "print") return printResult(); if (b.dataset.fab === "xlsx") return exportDay(); if (b.dataset.fab === "stock") return openStockImage() };
 function dateLabel(d) { const [, m, dd] = d.split("-"); return `${+m}/${+dd}（${"日一二三四五六"[new Date(d + "T00:00").getDay()]}）` }
 function goItem(id) { const it = itemById(id); if (!it) return; S.cat = it.c; setView("Count"); openKp(id) }
 
@@ -897,7 +900,6 @@ function renderSumInner() {
     ${dn ? `<p style="margin:10px 0 8px;color:var(--ok);font-weight:900">✓ ${esc(dn.by)} 在 ${hm(dn.t)} 完成點貨${dn.left ? `（${dn.left} 項未點）` : ""}</p><div class="grid2"><button class="btn" id="bUndo">取消完成，繼續點</button><button class="btn pri" id="bPrintR">🖨 A4 列印結果</button></div>`
       : `<button class="btn okb" id="bDone" style="margin-top:6px">完成點貨</button>`}
   </div>
-  ${stockPanel()}
   ${rq.length ? `<div class="panel alert"><h3>必點還沒點 <span class="c w">${rq.length}</span></h3>
     <p class="muted" style="margin:0 0 8px">這些沒點完不能按「完成點貨」</p>
     <div class="chips">${rq.map(i => `<button class="chip w" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>
@@ -915,7 +917,7 @@ function renderSumInner() {
     ${miss.length ? `<div class="chips">${miss.map(i => `<button class="chip" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>` : `<p class="muted" style="margin:0">全部點完了</p>`}</div>
 `;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
-  $("#bStock").onclick = openStockImage;
+
   $("#vSum").querySelectorAll("[data-ph]").forEach(b => b.onclick = () => openViewer(b.dataset.ph));
   let nt; $("#note").oninput = e => { clearTimeout(nt); const v = e.target.value; nt = setTimeout(() => store.setNote(S.date, v, S.me || ""), 700) };
   if ($("#bPrintR")) $("#bPrintR").onclick = printResult;
