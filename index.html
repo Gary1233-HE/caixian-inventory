@@ -289,8 +289,18 @@ select.in{appearance:auto}
 body.loc-mk .top{background:#3B2A4F}
 body.loc-mk .locsw button.on{background:#C9A6F2;color:#2A1A3D}
 @media (max-width:480px){.top .brand{display:none}}
-.mkb{font-weight:900;color:#B7BDB5}.mkb.on{background:#7B4FC9!important;color:#fff!important}
+.mkb{font-weight:900;color:#8A938A}.mkb.on{background:#E9DDF9!important;color:#5B33A0!important}.mkb.only{background:#7B4FC9!important;color:#fff!important}
 .mk-bulk{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:10px;font-size:13px}.mk-bulk span{flex:1;min-width:120px}.mk-bulk .btn{width:auto}
+.reqstrip{display:flex;align-items:center;gap:8px;width:100%;margin-top:8px;background:#C23B2E;color:#fff;border-radius:10px;padding:8px 10px;text-align:left;animation:reqp 1.6s ease-in-out infinite}
+.reqstrip .ri{font-size:18px}.reqstrip .rt{flex:1;min-width:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.reqstrip .rt b{font-size:16px}
+.reqstrip .rg{font-weight:900;background:#fff;color:#C23B2E;border-radius:8px;padding:3px 10px;white-space:nowrap}
+@keyframes reqp{0%,100%{box-shadow:0 0 0 0 rgba(194,59,46,.55)}50%{box-shadow:0 0 0 6px rgba(194,59,46,0)}}
+@media (prefers-reduced-motion:reduce){.reqstrip{animation:none}}
+.req-sheet{border-top:6px solid #C23B2E}
+.req-list{overflow:auto;margin-top:10px;max-height:46vh}
+.req-list button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:12px 6px;border-bottom:1px solid var(--line)}
+.req-list span{font-size:18px;font-weight:900;flex:1}.req-list small{color:var(--muted);font-size:12px}.req-list b{color:#C23B2E}
+.req-go{margin-top:12px;background:#C23B2E!important;color:#fff!important;border-color:#C23B2E!important;font-size:17px;padding:14px}
 .lfab{position:fixed;z-index:35;display:flex;align-items:center;gap:6px;background:var(--ink);color:#fff;border-radius:16px;font-weight:900;box-shadow:0 6px 18px rgba(20,30,25,.25)}
 .lfab svg{width:20px;height:20px;flex:none}
 .lfab b{position:absolute;top:-8px;right:-8px;background:var(--low);color:#fff;font-size:11px;border-radius:9px;padding:1px 6px;line-height:16px}
@@ -328,6 +338,7 @@ body.loc-mk .locsw button.on{background:#C9A6F2;color:#2A1A3D}
   </div>
   <div class="bar"><i id="barFill" style="width:0"></i></div>
   <div class="bar-txt"><span id="barL"></span><span id="barR"></span></div>
+  <button class="reqstrip hide" id="reqStrip"></button>
 </header>
 
 <div id="vCount"><div class="sbar hide" id="sbar"><input type="search" id="sq" placeholder="搜尋品項名稱" autocomplete="off" enterkeyhint="search"><button id="sqX">取消</button></div><div class="tabs" id="tabs"></div><main id="list"></main></div>
@@ -375,6 +386,11 @@ body.loc-mk .locsw button.on{background:#C9A6F2;color:#2A1A3D}
 </section>
 
 <div class="scrim" id="scrim"></div>
+<section class="sheet req-sheet" id="reqSheet" aria-label="必點還沒點">
+  <div class="sh-head"><div><b id="reqTitle">必點還沒點</b><span>這些是每天一定要點的品項</span></div><button class="sh-x" id="reqClose" aria-label="關閉">×</button></div>
+  <div class="req-list" id="reqList"></div>
+  <button class="btn req-go" id="reqGo">去點</button>
+</section>
 <section class="sheet" id="pp" aria-label="選擇清點人員">
   <div class="sh-head"><div><b>誰在點貨？</b><span>這台手機會記住，之後不用再選</span></div><button class="sh-x" id="ppClose" aria-label="關閉">×</button></div>
   <div class="pick" id="ppList"></div>
@@ -532,7 +548,8 @@ const S = {
   me: (() => { try { return localStorage.getItem("caixian-inv-me") || "" } catch { return "" } })()
 };
 /* 市場只點設定裡勾「市」的品項 */
-const items = () => LOC === "mk" ? S.cfg.items.filter(i => i.mk) : S.cfg.items;
+/* 位置：沒標＝只在倉庫；mk＝倉庫和市場都點（數量合計）；mko＝只在市場點 */
+const items = () => LOC === "mk" ? S.cfg.items.filter(i => i.mk || i.mko) : S.cfg.items.filter(i => !i.mko);
 const itemsOf = c => items().filter(i => i.c === c);
 const itemById = id => items().find(i => i.id === id);
 const counts = () => (S.day && S.day.counts) || {};
@@ -573,7 +590,7 @@ $("#date").value = S.date;
 
 store.watchCfg(c => {
   if (!c || !c.items || !c.items.length) { S.cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (store.mode === "fb") store.saveCfg(S.cfg).catch(err) }
-  else { S.cfg = c; if (!c.mkSeed1) seedMarket1() }
+  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2() }
   if (!S.cfg.people || !S.cfg.people.length) S.cfg.people = DEFAULT_CFG.people.slice();
   if (!S.cat || !S.cfg.cats.includes(S.cat)) S.cat = S.cfg.cats[0];
   renderWho(); render();
@@ -595,11 +612,17 @@ function seedMarket1() {
     const ex = cfg.items.find(i => i.n === n);
     if (ex) { ex.mk = 1; const us = String(ex.u || "").split("/").filter(Boolean), mus = u.split("/"); if (!us.includes(mus[0])) ex.mu = mus[0]; mus.forEach(x => { if (!us.includes(x)) us.push(x) }); ex.u = us.join("/"); return }
     if (!cfg.cats.includes(c)) cfg.cats.push(c);
-    const last = cfg.items.map(i => i.c).lastIndexOf(c), it = { id: `m${t0}${k}`, n, u, c, mk: 1 };
+    const last = cfg.items.map(i => i.c).lastIndexOf(c), it = { id: `m${t0}${k}`, n, u, c, mko: 1 };
     cfg.items.splice(last >= 0 ? last + 1 : cfg.items.length, 0, it);
   });
-  cfg.mkSeed1 = 1;
+  cfg.mkSeed1 = 1; cfg.mkSeed2 = 1;
   stores.wh.saveCfg(cfg).then(() => toast("已新增市場品項 " + MK_SEED1.length + " 項", 3000)).catch(err);
+}
+/* 一次性：上一版新增的市場品項（id 是 m 開頭）改成「只在市場」，倉庫清單不會多出來 */
+function seedMarket2() {
+  const cfg = JSON.parse(JSON.stringify(S.cfg));
+  cfg.items.forEach(i => { if (/^m[0-9a-z]+\d+$/.test(i.id) && i.mk) { delete i.mk; i.mko = 1 } });
+  cfg.mkSeed2 = 1; stores.wh.saveCfg(cfg).catch(err);
 }
 function setLoc(l) {
   LOC = l; try { localStorage.setItem("caixian-inv-loc", l) } catch {}
@@ -642,6 +665,7 @@ function stats() {
   };
 }
 function renderBar() {
+  renderReqStrip();
   const s = stats(), dn = S.day && S.day.done;
   $("#barFill").style.width = (s.total ? s.done / s.total * 100 : 0) + "%";
   $("#barL").innerHTML = `已點 <b>${s.done}</b> / ${s.total}　<span style="opacity:.7">${MODE_TXT}</span>`;
@@ -678,7 +702,16 @@ function visCats() { return S.cfg.cats.filter(c => LOC === "wh" || itemsOf(c).le
 function renderCount() {
   if (S.q != null) return renderSearch();
   const c = counts(), p = pcounts();
-  if (LOC === "mk" && !items().length) { $("#tabs").innerHTML = ""; $("#list").innerHTML = `<div class="empty">市場還沒有設定要點的品項。<br>到「設定 → 品項管理」，在要點的品項按「市」，或按「這類全部市場點」。</div>`; return }
+  if (LOC === "mk") {
+    $("#tabs").innerHTML = ""; document.documentElement.style.setProperty("--catbg", "#F1EAFB");
+    const all = items();
+    if (!all.length) { $("#list").innerHTML = `<div class="empty">市場還沒有設定要點的品項。<br>到「設定 → 品項管理」，把位置按鈕切成「兩」或「市」。</div>`; return }
+    const its = all.filter(isActive), rest = all.filter(i => !isActive(i)), left = its.filter(i => c[i.id] == null).length;
+    $("#list").innerHTML = `<div class="cat-h" style="--cc:#7B4FC9"><span class="sw"></span><h2>市場</h2><span class="muted">${left ? `剩 ${left} 項` : "都點完了"}</span>${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}</div>
+      <div class="rows">${its.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>
+      ${rest.length ? `<div class="skip-h">今天不用點 ${rest.length} 項</div><div class="rows">${rest.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>` : ""}`;
+    return;
+  }
   if (!S.cat || !visCats().includes(S.cat)) S.cat = visCats()[0];
   document.documentElement.style.setProperty("--catbg", catTint(S.cat));
   $("#tabs").innerHTML = visCats().map(cat => {
@@ -704,13 +737,13 @@ function rowHtml(i, e, pe, showCat) {
   } else if (!isDue(i)) cls += " skip";
   else if (isReq(i)) cls += " need";
   const nd = e == null && !isDue(i) ? nextDue(i) : null;
-  const sub = [units(i).join("/"), freqLabel(freqOf(i)), nd ? `下次 ${dateLabel(nd)}` : "", minOf(i) ? `安全 ${fmt(minOf(i))}` : "", pe ? `上次 ${qtyText(i, pe)}` : "", e && e.by ? e.by : ""].filter(Boolean).join("　");
+  const sub = [units(i).join("/"), LOC === "mk" && i.mk ? "倉庫＋市場合計" : "", freqLabel(freqOf(i)), nd ? `下次 ${dateLabel(nd)}` : "", minOf(i) ? `安全 ${fmt(minOf(i))}` : "", pe ? `上次 ${qtyText(i, pe)}` : "", e && e.by ? e.by : ""].filter(Boolean).join("　");
   const badges = (isReq(i) ? `<span class="bdg rq">必</span>` : "") + (needOf(i, e) > 0 && !isZero(e) ? `<span class="bdg lo">補 ${fmt(needOf(i, e))}</span>` : "");
   return `<button class="${cls}" data-id="${i.id}"><span class="nm"><b>${esc(i.n)}${badges}</b><span class="s">${showCat ? `<span class="ct" style="--ct:${catTint(i.c)}">${esc(i.c)}</span>` : ""}${esc(sub)}</span></span>${diff}<span class="val${isMulti(i, e) && !isZero(e) ? " multi" : ""}">${val}</span></button>`;
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (!b) return; S.cat = b.dataset.cat; renderCount(); window.scrollTo(0, 0) });
 $("#list").addEventListener("click", e => {
-  if (e.target.closest("[data-start]")) { const c = counts(); const f = itemsOf(S.cat).find(i => isDue(i) && c[i.id] == null); if (f) openKp(f.id); return }
+  if (e.target.closest("[data-start]")) { const c = counts(); const f = (LOC === "mk" ? items() : itemsOf(S.cat)).find(i => isDue(i) && c[i.id] == null); if (f) openKp(f.id); return }
   const r = e.target.closest("[data-id]"); if (r) openKp(r.dataset.id);
 });
 
@@ -730,7 +763,9 @@ function openKp(id) {
   $("#kp").classList.add("show"); document.body.style.overflow = "hidden";
   renderKp();
 }
+function closeKpReq() { S.reqRun = false }
 function closeKp() {
+  closeKpReq();
   S.kp = null; $("#kp").classList.remove("show"); document.body.style.overflow = "";
   if (S.view === "Count") renderCount();
 }
@@ -746,7 +781,7 @@ function anomaly(it, u) {
 }
 function renderKp() {
   const k = S.kp, it = itemById(k.id); if (!it) return closeKp();
-  const e = counts()[it.id], pe = pcounts()[it.id], all = itemsOf(it.c);
+  const e = counts()[it.id], pe = pcounts()[it.id], all = LOC === "mk" ? items() : itemsOf(it.c);
   $("#kp").style.setProperty("--kt", catTint(it.c));
   $("#kpName").textContent = it.n;
   const act = all.filter(isActive), pos = act.indexOf(it);
@@ -803,6 +838,14 @@ function nextTarget(dir) {
 }
 function step(dir) {
   if (S.q != null) { closeKp(); return } // from search: back to the results
+  if (S.reqRun && dir > 0) {
+    const miss = reqMissing().filter(i => i.id !== S.kp.id);
+    if (miss.length) { toast(`必點還剩 ${miss.length} 項`, 1200); openKp(miss[0].id); return }
+    S.reqRun = false; closeKp();
+    toast(S.reqFromFinish ? "必點都點完了 ✓ 可以按「完成點貨」" : "必點都點完了 ✓", 2500);
+    if (S.reqFromFinish) setView("Sum");
+    return;
+  }
   const nx = nextTarget(dir);
   if (!nx) {
     if (dir > 0) {
@@ -812,7 +855,7 @@ function step(dir) {
     } else closeKp();
     return;
   }
-  if (nx.c !== S.cat) toast("換到 " + nx.c, 1200);
+  if (LOC !== "mk" && nx.c !== S.cat) toast("換到 " + nx.c, 1200);
   openKp(nx.id);
 }
 $("#kp").addEventListener("click", ev => {
@@ -855,7 +898,7 @@ function openPeople() {
   $("#pp").classList.add("show"); $("#scrim").classList.add("show");
 }
 function closePeople() { $("#pp").classList.remove("show"); $("#scrim").classList.remove("show") }
-$("#who").onclick = openPeople; $("#ppClose").onclick = closePeople; $("#scrim").onclick = () => { closePeople(); closeNote() };
+$("#who").onclick = openPeople; $("#ppClose").onclick = closePeople; $("#scrim").onclick = () => { closePeople(); closeNote(); closeReqSheet() };
 $("#ppList").onclick = e => { const b = e.target.closest("[data-p]"); if (!b) return; S.me = b.dataset.p; try { localStorage.setItem("caixian-inv-me", S.me) } catch {} renderWho(); closePeople(); toast(S.me + " 開始點貨") };
 
 /* ================= views ================= */
@@ -1023,10 +1066,32 @@ function renderSumInner() {
   if ($("#bDone")) $("#bDone").onclick = finish;
   if ($("#bUndo")) $("#bUndo").onclick = () => store.setDone(S.date, null);
 }
+/* ===== 必點沒點：上方紅條隨時提醒；按完成時跳出清單；「去點」會一項一項帶過去 ===== */
+function renderReqStrip() {
+  const el = $("#reqStrip"), rq = reqMissing(), dn = S.day && S.day.done;
+  const show = S.view === "Count" && rq.length && !dn && Object.keys(counts()).length > 0;
+  el.classList.toggle("hide", !show);
+  if (show) el.innerHTML = `<span class="ri">⚠</span><span class="rt">必點還有 <b>${rq.length}</b> 項沒點：${esc(rq.slice(0, 4).map(i => i.n).join("、"))}${rq.length > 4 ? "…" : ""}</span><span class="rg">去點 ›</span>`;
+}
+function openReqSheet(fromFinish) {
+  const rq = reqMissing(); if (!rq.length) return;
+  S.reqFromFinish = !!fromFinish;
+  $("#reqTitle").textContent = `必點還有 ${rq.length} 項沒點`;
+  $("#reqList").innerHTML = rq.map(i => `<button data-rq="${i.id}"><span>${esc(i.n)}</span><small>${esc(LOC === "mk" ? "" : i.c)}　${esc(units(i).join("/"))}</small><b>點 ›</b></button>`).join("");
+  $("#reqGo").textContent = `從第一項開始點（共 ${rq.length} 項）`;
+  $("#reqSheet").classList.add("show"); $("#scrim").classList.add("show");
+  if (navigator.vibrate) navigator.vibrate([90, 60, 90]);
+}
+function closeReqSheet() { $("#reqSheet").classList.remove("show"); $("#scrim").classList.remove("show") }
+function startReqRun(id) { const rq = reqMissing(); if (!rq.length) return; closeReqSheet(); S.reqRun = true; if (S.view !== "Count") setView("Count"); openKp(id || rq[0].id) }
+$("#reqStrip").onclick = () => openReqSheet(false);
+$("#reqClose").onclick = closeReqSheet;
+$("#reqGo").onclick = () => startReqRun();
+$("#reqList").onclick = e => { const b = e.target.closest("[data-rq]"); if (b) startReqRun(b.dataset.rq) };
 function finish() {
   if (needMe()) return;
   const rq = reqMissing();
-  if (rq.length) { toast(`必點還有 ${rq.length} 項沒點：${rq.slice(0, 3).map(i => i.n).join("、")}${rq.length > 3 ? "…" : ""}`, 3000); if (navigator.vibrate) navigator.vibrate([80, 60, 80]); return }
+  if (rq.length) { openReqSheet(true); return }
   const left = items().filter(i => isDue(i) && counts()[i.id] == null).length;
   if (left && !confirm(`還有 ${left} 項沒點（都不是必點），確定完成？`)) return;
   const dn = { by: S.me, t: Date.now(), left };
@@ -1384,7 +1449,7 @@ function drawSet() {
     <div id="impBox"></div></div>
 
   <div class="panel"><h3>品項管理</h3>
-    <div class="mk-bulk"><span>市場：<b>${dr.items.filter(i => i.c === cat && i.mk).length}</b> / ${dr.items.filter(i => i.c === cat).length} 項要點</span><button class="btn sm" id="mkAll">這類全部市場點</button><button class="btn sm" id="mkNone">這類市場都不點</button></div>
+    <div class="mk-bulk"><span>位置按鈕：<b>倉</b>只倉庫｜<b>兩</b>倉庫＋市場（合計）｜<b>市</b>只市場。這類市場要點 <b>${dr.items.filter(i => i.c === cat && (i.mk || i.mko)).length}</b> 項</span><button class="btn sm" id="mkAll">這類全部市場點</button><button class="btn sm" id="mkNone">這類市場都不點</button></div>
     <select class="in" id="sC" style="margin-bottom:10px">${dr.cats.map(c => `<option ${c === cat ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
     <div class="ed-head"><span style="flex:1">品名</span><span style="width:62px;text-align:center">單位</span><span style="width:48px;text-align:center">安全量</span><span style="width:32px;text-align:center">必點</span><span style="width:32px;text-align:center">頻率</span><span style="width:104px"></span></div>
     <div id="sI">${its.map(i => `<div class="ed-row" data-id="${i.id}">
@@ -1392,7 +1457,7 @@ function drawSet() {
       <input class="u" value="${esc(i.u)}" data-f="u" aria-label="單位" placeholder="箱/斤">
       <input class="m" type="number" inputmode="decimal" min="0" step="0.5" value="${+i.m > 0 ? +i.m : ""}" data-f="m" placeholder="—" aria-label="安全庫存">
       <button class="rqb ${isReq(i) ? "on" : ""}" data-a="rq" aria-label="必點">必</button>
-      <button class="mkb ${i.mk ? "on" : ""}" data-a="mk" aria-label="市場也要點" title="市場也要點">市</button>
+      <button class="mkb ${i.mko ? "only" : i.mk ? "on" : ""}" data-a="mk" aria-label="點貨位置" title="點一下切換：只倉庫 → 倉庫＋市場 → 只市場">${i.mko ? "市" : i.mk ? "兩" : "倉"}</button>
       <button class="fqb ${freqOf(i) ? "on" : ""}" data-a="fq" aria-label="點貨頻率" title="${esc(freqLabel(freqOf(i)) || "每天點")}">${freqOf(i) === "2" ? "隔" : freqOf(i) ? "運" : "天"}</button>
       <button data-a="up" aria-label="上移">↑</button>
       <select data-f="c" aria-label="換分類">${dr.cats.map(c => `<option ${c === i.c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
@@ -1419,8 +1484,8 @@ function drawSet() {
   renderUsage();
   const dirty = () => { S.editing = true };
   $("#sC").onchange = e => { dr._cat = e.target.value; drawSet() };
-  $("#mkAll").onclick = () => { dr.items.filter(i => i.c === dr._cat).forEach(i => { i.mk = 1 }); dirty(); drawSet() };
-  $("#mkNone").onclick = () => { dr.items.filter(i => i.c === dr._cat).forEach(i => { delete i.mk }); dirty(); drawSet() };
+  $("#mkAll").onclick = () => { dr.items.filter(i => i.c === dr._cat && !i.mko).forEach(i => { i.mk = 1 }); dirty(); drawSet() };
+  $("#mkNone").onclick = () => { dr.items.filter(i => i.c === dr._cat).forEach(i => { delete i.mk; delete i.mko }); dirty(); drawSet() };
   $("#sP").oninput = e => { dr.people = e.target.value.split(/[、,，\s]+/).map(s => s.trim()).filter(Boolean); dirty() };
   $("#sI").oninput = $("#sI").onchange = e => {
     const r = e.target.closest("[data-id]"), f = e.target.dataset.f; if (!r || !f) return;
@@ -1442,7 +1507,7 @@ function drawSet() {
     const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
     const arr = dr.items, idx = arr.findIndex(i => i.id === id), it = arr[idx]; dirty();
     if (b.dataset.a === "rq") { if (it.r) delete it.r; else it.r = 1 }
-    else if (b.dataset.a === "mk") { if (it.mk) delete it.mk; else it.mk = 1 }
+    else if (b.dataset.a === "mk") { if (it.mko) { delete it.mko } else if (it.mk) { delete it.mk; it.mko = 1 } else it.mk = 1 }
     else if (b.dataset.a === "fq") { dr._fq = dr._fq === id ? null : id }
     else if (b.dataset.a === "del") { if (!confirm(`刪除「${it.n}」？過去的紀錄會保留。`)) return; arr.splice(idx, 1) }
     else if (b.dataset.a === "up") { let k = idx - 1; while (k >= 0 && arr[k].c !== it.c) k--; if (k >= 0) [arr[idx], arr[k]] = [arr[k], arr[idx]] }
@@ -1458,7 +1523,7 @@ function drawSet() {
   $("#sR").onclick = () => { S.editing = false; S.imp = null; renderSet() };
   $("#sS").onclick = () => saveDraft("設定已儲存");
   $("#sDef").onclick = async () => { if (!confirm("把品項清單還原成原始版本？（人員名單不變，紀錄不受影響）")) return;
-    const c = JSON.parse(JSON.stringify(DEFAULT_CFG)); c.people = S.cfg.people; c.mkSeed1 = 1; await store.saveCfg(c).catch(err); S.editing = false; renderSet(); toast("已還原") };
+    const c = JSON.parse(JSON.stringify(DEFAULT_CFG)); c.people = S.cfg.people; c.mkSeed1 = 1; c.mkSeed2 = 1; await store.saveCfg(c).catch(err); S.editing = false; renderSet(); toast("已還原") };
   $("#xDown").onclick = downloadItems;
   $("#xUp").onclick = () => { $("#xlIn").value = ""; $("#xlIn").click() };
 }
@@ -1466,8 +1531,8 @@ function newId(arr) { const max = arr.reduce((m, i) => Math.max(m, +String(i.id)
 async function saveDraft(msg) {
   const dr = S.draft;
   const cats = dr.cats.filter(c => dr.items.some(i => i.c === c));
-  const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r, f, mk, mu }) => { const o = { id, n, u: u || "", c }; if (m > 0) o.m = m; if (r) o.r = 1; if (f) o.f = f; if (mk) o.mk = 1; if (mu && String(u || "").split("/").includes(mu)) o.mu = mu; return o }), people: dr.people.length ? dr.people : ["土豆"] };
-  if (S.cfg.mkSeed1) c.mkSeed1 = 1;   /* 一次性設定的紀錄要保留，免得重跑 */
+  const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r, f, mk, mko, mu }) => { const o = { id, n, u: u || "", c }; if (m > 0) o.m = m; if (r) o.r = 1; if (f) o.f = f; if (mko) o.mko = 1; else if (mk) o.mk = 1; if (mu && String(u || "").split("/").includes(mu)) o.mu = mu; return o }), people: dr.people.length ? dr.people : ["土豆"] };
+  if (S.cfg.mkSeed1) c.mkSeed1 = 1; if (S.cfg.mkSeed2) c.mkSeed2 = 1;   /* 一次性設定的紀錄要保留，免得重跑 */
   try { await store.saveCfg(c); S.editing = false; S.imp = null; toast(msg) } catch (e) { err(e) }
 }
 async function autoSuggest() {
@@ -1485,7 +1550,7 @@ async function autoSuggest() {
 function downloadItems() {
   const src = S.draft || S.cfg;
   const rows = [["分類", "品名", "單位", "安全量", "必點", "點貨頻率", "市場"]];
-  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", +i.m > 0 ? +i.m : "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : "", i.mk ? "V" : ""])));
+  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", +i.m > 0 ? +i.m : "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : "", i.mko ? "只" : i.mk ? "V" : ""])));
   const help = [["欄位", "怎麼填"], ["分類", "照原本的分類名稱；新分類也可以，會自動加在最後。空白＝跟上一列同分類"], ["品名", "必填。同一品項兩種包裝要分開點，就寫兩列不同品名（例：青江菜(件)、青江菜(捆)）"],
     ["單位", "一種單位：箱。同品項會混著不同單位：箱/斤（點貨時可以同時輸入 2箱 5斤）"], ["安全量", "數字，以第一個單位計。空白＝不追蹤"], ["必點", "填 V（或 是、必、1）＝必點，沒點完不能按完成"], ["點貨頻率", "空白＝每天點；隔天＝兩天點一次（昨天點過今天就不用）；貨運二五＝星期二、五貨運，前一天（一、四）點"],
     ["排序", "表格上下順序就是 App 裡的順序"], ["刪除", "整列刪掉即可，過去的紀錄會保留"]];
@@ -1515,14 +1580,15 @@ $("#xlIn").onchange = async e => {
       if (match) used.add(match.id);
       const it = { id, n, u, c }; if (m > 0) it.m = m; if (rq) it.r = 1;
       const fq = cF >= 0 ? parseFreq(r[cF]) : (match ? freqOf(match) : ""); if (fq) it.f = fq;
-      const mkv = cK >= 0 ? /^(v|是|1|y|市|o|ｖ|Ｖ)$/i.test(String(r[cK] ?? "").trim()) : !!(match && match.mk); if (mkv) it.mk = 1;
+      const kv = cK >= 0 ? String(r[cK] ?? "").trim() : (match ? (match.mko ? "只" : match.mk ? "V" : "") : "");
+      if (/^(只|只市場|市場only)$/i.test(kv)) it.mko = 1; else if (/^(v|是|1|y|市|o|ｖ|Ｖ|兩)$/i.test(kv)) it.mk = 1;
       out.push(it);
     }
     if (!out.length) return toast("檔案裡沒有品項");
     const byId = new Map(old.map(i => [i.id, i]));
     const added = out.filter(i => !byId.has(i.id));
     const removed = old.filter(i => !out.some(o => o.id === i.id));
-    const changed = out.filter(i => { const o = byId.get(i.id); return o && (o.c !== i.c || (o.u || "") !== i.u || (+o.m || 0) !== (+i.m || 0) || !!o.r !== !!i.r || freqOf(o) !== freqOf(i) || !!o.mk !== !!i.mk) });
+    const changed = out.filter(i => { const o = byId.get(i.id); return o && (o.c !== i.c || (o.u || "") !== i.u || (+o.m || 0) !== (+i.m || 0) || !!o.r !== !!i.r || freqOf(o) !== freqOf(i) || !!o.mk !== !!i.mk || !!o.mko !== !!i.mko) });
     S.imp = { items: out, cats, added, removed, changed, byId, people: base.people };
     S.editing = true; drawImp();
     $("#impBox").scrollIntoView({ behavior: "smooth", block: "center" });
