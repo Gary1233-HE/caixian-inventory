@@ -69,6 +69,9 @@ main{padding:6px 12px calc(84px + var(--safe-b))}
 .cat-h{display:flex;align-items:center;gap:8px;margin:14px 2px 8px}
 .cat-h h2{margin:0;font-size:20px;font-weight:900}
 .cat-h .sw{width:12px;height:12px;border-radius:3px;background:var(--cc)}
+.cat-h .act.reqb{background:#C23B2E;color:#fff;border-color:#C23B2E;font-weight:900}
+.cat-h .act + .act.reqb{margin-left:6px}
+.cat-h .act.reqb.ok{background:var(--ok);border-color:var(--ok);opacity:1}
 .cat-h .act{margin-left:auto;font-size:13px;padding:5px 9px;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff}
 .row{display:flex;align-items:center;gap:10px;width:100%;background:rgba(255,255,255,.5);border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:10px 12px;margin-bottom:6px;text-align:left;min-height:60px}
 .row .nm{flex:1;min-width:0}
@@ -707,7 +710,7 @@ function renderCount() {
     const all = items();
     if (!all.length) { $("#list").innerHTML = `<div class="empty">市場還沒有設定要點的品項。<br>到「設定 → 品項管理」，把位置按鈕切成「兩」或「市」。</div>`; return }
     const its = all.filter(isActive), rest = all.filter(i => !isActive(i)), left = its.filter(i => c[i.id] == null).length;
-    $("#list").innerHTML = `<div class="cat-h" style="--cc:#7B4FC9"><span class="sw"></span><h2>市場</h2><span class="muted">${left ? `剩 ${left} 項` : "都點完了"}</span>${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}</div>
+    $("#list").innerHTML = `<div class="cat-h" style="--cc:#7B4FC9"><span class="sw"></span><h2>市場</h2><span class="muted">${left ? `剩 ${left} 項` : "都點完了"}</span>${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}${reqBtn()}</div>
       <div class="rows">${its.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>
       ${rest.length ? `<div class="skip-h">今天不用點 ${rest.length} 項</div><div class="rows">${rest.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>` : ""}`;
     return;
@@ -723,7 +726,7 @@ function renderCount() {
   const all = itemsOf(S.cat), its = all.filter(isActive), rest = all.filter(i => !isActive(i)), left = its.filter(i => c[i.id] == null).length;
   $("#list").innerHTML = `<div class="cat-h" style="--cc:${catColor(S.cat)}"><span class="sw"></span><h2>${esc(S.cat)}</h2>
     <span class="muted">${left ? `剩 ${left} 項` : "這類點完了"}</span>
-    ${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}</div>
+    ${left ? `<button class="act" data-start="1">從未點的開始</button>` : ""}${reqBtn()}</div>
     <div class="rows">${its.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>
     ${rest.length ? `<div class="skip-h">今天不用點 ${rest.length} 項<span>（要點也可以直接點進去）</span></div><div class="rows">${rest.map(i => rowHtml(i, c[i.id], p[i.id])).join("")}</div>` : ""}`;
 }
@@ -743,6 +746,7 @@ function rowHtml(i, e, pe, showCat) {
 }
 $("#tabs").addEventListener("click", e => { const b = e.target.closest("[data-cat]"); if (!b) return; S.cat = b.dataset.cat; renderCount(); window.scrollTo(0, 0) });
 $("#list").addEventListener("click", e => {
+  if (e.target.closest("[data-reqrun]")) { S.reqFromFinish = false; startReqRun(); return }
   if (e.target.closest("[data-start]")) { const c = counts(); const f = (LOC === "mk" ? items() : itemsOf(S.cat)).find(i => isDue(i) && c[i.id] == null); if (f) openKp(f.id); return }
   const r = e.target.closest("[data-id]"); if (r) openKp(r.dataset.id);
 });
@@ -843,6 +847,7 @@ function step(dir) {
     if (miss.length) { toast(`必點還剩 ${miss.length} 項`, 1200); openKp(miss[0].id); return }
     S.reqRun = false; closeKp();
     toast(S.reqFromFinish ? "必點都點完了 ✓ 可以按「完成點貨」" : "必點都點完了 ✓", 2500);
+    if (S.view === "Count") renderCount();
     if (S.reqFromFinish) setView("Sum");
     return;
   }
@@ -1067,9 +1072,15 @@ function renderSumInner() {
   if ($("#bUndo")) $("#bUndo").onclick = () => store.setDone(S.date, null);
 }
 /* ===== 必點沒點：上方紅條隨時提醒；按完成時跳出清單；「去點」會一項一項帶過去 ===== */
+/* 「從未點的開始」右邊的必點按鈕：紅＝還有必點沒點（點下去只跑那幾項）；綠＝必點都點完 */
+function reqBtn() {
+  const all = items().filter(i => isReq(i) && isDue(i)); if (!all.length) return "";
+  const n = reqMissing().length;
+  return n ? `<button class="act reqb" data-reqrun="1">必點 剩${n}</button>` : `<button class="act reqb ok" disabled>必點 ✓</button>`;
+}
 function renderReqStrip() {
   const el = $("#reqStrip"), rq = reqMissing(), dn = S.day && S.day.done;
-  const show = S.view === "Count" && rq.length && !dn && Object.keys(counts()).length > 0;
+  const show = false && rq.length && !dn;   /* 改用「必點」按鈕提醒 */
   el.classList.toggle("hide", !show);
   if (show) el.innerHTML = `<span class="ri">⚠</span><span class="rt">必點還有 <b>${rq.length}</b> 項沒點：${esc(rq.slice(0, 4).map(i => i.n).join("、"))}${rq.length > 4 ? "…" : ""}</span><span class="rg">去點 ›</span>`;
 }
