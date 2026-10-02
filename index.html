@@ -1037,7 +1037,68 @@ function renderSum() {
   if (keep) { const t = document.getElementById(keep.id); t.value = keep.v; t.focus(); try { t.setSelectionRange(keep.a, keep.b) } catch {} }
 }
 /* ===== 庫存總表：畫成一張圖片，可以放大看、下載 ===== */
+/* 市場總表：不分類，名字相近的排在一起（例如三種菱角、大辣小辣、各種菇）
+   做法：去掉「生／包好／撥好／大／小／泰國…」這類修飾字和數字單位，剩下的最後一個字當同類（菱角→角、辣、筍…）；菇類一律同一組 */
+function famKey(it) {
+  let n = String(it.n || "").replace(/（.*?）|\(.*?\)/g, "").replace(/\d+(\.\d+)?\s*(kg|KG|g|G|cc|CC|ml|ML|公斤|公克)?/g, "").replace(/[A-Za-z]+$/, "").trim();
+  if (it.c === "菇類") return "菇";
+  const pre = ["包好", "撥好", "修清", "去殼", "泰國", "美國", "原封", "生", "大", "小", "削", "凍"], suf = ["包好", "加工", "丁", "絲", "片"];
+  let ch = true; while (ch && n.length > 1) { ch = false; for (const p of pre) if (n.startsWith(p) && n.length > p.length) { n = n.slice(p.length); ch = true; break } }
+  for (const p of suf) if (n.endsWith(p) && n.length > p.length) { n = n.slice(0, -p.length); break }
+  return n.slice(-1) || it.n;
+}
+function mkGroups() {
+  const cats = S.cfg.cats, by = new Map();
+  items().forEach(i => { const k = famKey(i); (by.get(k) || by.set(k, []).get(k)).push(i) });
+  const gs = [...by.values()].map(g => ({ g: g.sort((a, b) => a.n.localeCompare(b.n, "zh-Hant")), o: Math.min(...g.map(i => cats.indexOf(i.c) < 0 ? 99 : cats.indexOf(i.c))) }));
+  gs.sort((a, b) => a.o - b.o);
+  return gs.map((x, k) => x.g.map(i => ({ i, band: k % 2 }))).flat();
+}
+/* 一格的顯示：{ t 文字, k 類型 } */
+function cellInfo(i, e) {
+  if (e == null) return isDue(i) ? { t: "未點", k: "miss" } : { t: "免點", k: "skip" };
+  if (isOk(e)) return { t: "夠用", k: "ok" };
+  if (isZero(e)) return { t: "缺", k: "zero" };
+  return { t: plainNum(i, e) ? fmt(firstVal(i, e)) : qtyText(i, e), k: isLow(i, e) ? "low" : "n" };
+}
+/* 市場庫存總表圖片：兩欄、大字、不分類，手機看得清楚 */
+async function stockImageMk() {
+  const c = counts(), list = mkGroups(), n = list.length, rows = Math.ceil(n / 2) || 1;
+  const SC = 2, W = 760, PAD = 20, CW = (W - PAD * 2 - 12) / 2, RH = 58, HEAD = 120;
+  const zero = items().filter(i => isZero(c[i.id])), un = items().filter(i => c[i.id] == null && isDue(i));
+  const note = ((S.day && S.day.note) || "").trim();
+  const F = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+  try { await document.fonts.load('700 20px "Noto Sans TC"'); await document.fonts.load('20px "Noto Sans TC"') } catch {}
+  const cv = document.createElement("canvas"), g = cv.getContext("2d");
+  g.font = `22px ${F}`;
+  const wrap = (t, w) => { const out = []; let line = ""; for (const ch of t) { if (g.measureText(line + ch).width > w) { out.push(line); line = ch } else line += ch } if (line) out.push(line); return out };
+  const foot = [zero.length ? `缺貨：${zero.map(i => i.n).join("、")}` : "", un.length ? `未點：${un.map(i => i.n).join("、")}` : "", note ? `備註：${note}` : ""].filter(Boolean).flatMap(t => wrap(t, W - PAD * 2 - 24));
+  const H = HEAD + rows * RH + 16 + (foot.length ? foot.length * 32 + 28 : 0) + PAD;
+  cv.width = W * SC; cv.height = H * SC; g.scale(SC, SC);
+  g.fillStyle = "#fff"; g.fillRect(0, 0, W, H); g.textBaseline = "middle";
+  const fit = (t, x, y, w, size, weight = "400", color = "#111", align = "left") => { let sz = size; g.font = `${weight} ${sz}px ${F}`; while (g.measureText(t).width > w - 6 && sz > 12) { sz -= 1; g.font = `${weight} ${sz}px ${F}` } g.fillStyle = color; g.textAlign = align; g.fillText(t, align === "center" ? x + w / 2 : align === "right" ? x + w - 4 : x + 4, y) };
+  const who = [...new Set(Object.values(c).map(x => x.by).filter(Boolean))].join("、"), dn = S.day && S.day.done, st = stats();
+  fit("採鮮農產行　市場庫存", PAD, 34, W - PAD * 2, 34, "900");
+  fit(`${dateLabel(S.date)}　${who || "—"}　${dn ? `✓ ${dn.by} ${hm(dn.t)} 完成` : `點了 ${st.done}/${st.total}`}`, PAD, 78, W - PAD * 2, 22, "500", "#333");
+  const y0 = HEAD;
+  const colOf = k => (k < rows ? 0 : 1), x0 = col => PAD + col * (CW + 12);
+  const nW = CW * .5, uW = CW * .16, qW = CW - nW - uW;
+  list.forEach(({ i, band }, k) => {
+    const col = colOf(k), r = col ? k - rows : k, x = x0(col), y = y0 + r * RH, cy = y + RH / 2 + 1, e = c[i.id], ci = cellInfo(i, e);
+    g.fillStyle = band ? "#EEF3F9" : "#fff"; g.fillRect(x, y, CW, RH);
+    fit((isReq(i) ? "★" : "") + i.n, x, cy, nW, 25, "700");
+    fit(units(i).join("/"), x + nW, cy, uW, 17, "400", "#777", "center");
+    const qx = x + nW + uW;
+    if (ci.k === "zero") { g.fillStyle = "#C23B2E"; g.fillRect(qx + 2, y + 5, qW - 4, RH - 10); fit("缺", qx, cy, qW, 26, "900", "#fff", "center") }
+    else fit(ci.t, qx, cy, qW, ci.k === "n" || ci.k === "low" ? 30 : 19, ci.k === "n" || ci.k === "low" ? "900" : "700", { low: "#C23B2E", ok: "#2E7A4C", miss: "#D5730A", skip: "#aaa", n: "#111" }[ci.k], "center");
+  });
+  g.strokeStyle = "#ccd"; g.lineWidth = 1;
+  for (let col = 0; col < 2; col++) { const x = x0(col); for (let r = 0; r <= rows; r++) { g.beginPath(); g.moveTo(x, y0 + r * RH); g.lineTo(x + CW, y0 + r * RH); g.stroke() } g.strokeStyle = "#111"; g.lineWidth = 2; g.strokeRect(x, y0, CW, rows * RH); g.strokeStyle = "#ccd"; g.lineWidth = 1 }
+  if (foot.length) { const fy = y0 + rows * RH + 16; g.strokeStyle = "#111"; g.lineWidth = 1.5; g.strokeRect(PAD, fy, W - PAD * 2, foot.length * 32 + 16); foot.forEach((t, k) => fit(t, PAD + 8, fy + 24 + k * 32, W - PAD * 2 - 16, 22, "600")) }
+  return cv.toDataURL("image/png");
+}
 async function stockImage() {
+  if (LOC === "mk") return stockImageMk();
   const c = counts(), cats = S.cfg.cats.filter(cat => itemsOf(cat).length);
   const maxn = Math.max(...cats.map(cat => itemsOf(cat).length));
   const SC = 2, CW = 330, RH = 38, PAD = 24, HEAD = 128, CH = 44, SUB = 30;
@@ -1297,7 +1358,30 @@ async function exportRange() {
 
 /* ---------- paper sheet ---------- */
 /* filled=true：印出這天的點貨結果（A4 橫式，和紙本表同版面） */
+/* 市場 A4：不分類、名字相近的排一起，兩欄大字 */
+function paperHtmlMk(filled) {
+  const c = counts(), list = mkGroups(), n = list.length, rows = Math.ceil(n / 2) || 1;
+  const rh = Math.max(7, Math.min(14, 150 / rows)).toFixed(1), fs = Math.min(16, rh * 1.25).toFixed(1);
+  const who = [...new Set(Object.values(c).map(x => x.by).filter(Boolean))].join("、"), dn = S.day && S.day.done, st = stats();
+  const zero = items().filter(i => isZero(c[i.id])), un = items().filter(i => c[i.id] == null && isDue(i)), note = ((S.day && S.day.note) || "").trim();
+  const cell = i => { if (!filled) return `<td class="q"></td>`; const ci = cellInfo(i, c[i.id]); return `<td class="q ${ci.k}">${esc(ci.t)}</td>` };
+  const side = arr => `<table><colgroup><col><col style="width:16mm"><col style="width:30mm"></colgroup><tr class="sub"><th>品名</th><th>單位</th><th>數量</th></tr>${arr.map(({ i, band }) => `<tr class="b${band}"><td class="n">${isReq(i) ? "★" : ""}${esc(i.n)}</td><td class="u">${esc(units(i).join("/"))}</td>${cell(i)}</tr>`).join("")}${Array.from({ length: rows - arr.length }, () => `<tr><td></td><td></td><td></td></tr>`).join("")}</table>`;
+  const title = (filled ? "市場庫存點貨結果" : "市場庫存清點表");
+  return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>採鮮農產行 ${title} ${filled ? S.date : ""}</title>
+<style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{margin:0;font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;color:#111}.page{width:calc(100% - 1.5mm)}
+.hd{display:flex;align-items:flex-end;gap:10mm;margin-bottom:3mm}h1{font-size:18pt;margin:0;flex:1}.f{font-size:11pt;font-weight:700}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:3mm}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:${fs}pt}
+th,td{border:1px solid #777;padding:0 2mm;height:${rh}mm;line-height:1.1}th{background:#eee;font-size:10pt}td.n{font-weight:700}td.u{text-align:center;color:#666;font-size:10pt}
+td.q{text-align:center;font-weight:900;font-size:${(fs * 1.15).toFixed(1)}pt}td.q.low{color:#C23B2E}td.q.ok{color:#2E7A4C;font-size:11pt}td.q.miss{color:#D5730A;font-size:10pt;font-weight:700}td.q.skip{color:#aaa;font-size:10pt;font-weight:400}td.q.zero{background:#C23B2E;color:#fff}
+tr.b1 td{background:#EEF3F9}.ft{margin-top:3mm;border:1.5px solid #111;padding:2mm 3mm;font-size:11pt;font-weight:600;line-height:1.5}</style></head><body><div class="page">
+<div class="hd"><h1>採鮮農產行　${title}</h1><div class="f">${esc(dateLabel(S.date))}</div>${filled ? `<div class="f">清點：${esc(who || "—")}</div><div class="f">${dn ? `✓ ${esc(dn.by)} ${hm(dn.t)} 完成` : `點了 ${st.done}/${st.total}`}</div>` : `<div class="f">清點人員：＿＿＿＿</div>`}</div>
+<div class="grid">${side(list.slice(0, rows))}${side(list.slice(rows))}</div>
+<div class="ft">${filled ? `${zero.length ? `缺貨：${zero.map(i => esc(i.n)).join("、")}<br>` : ""}${un.length ? `未點：${un.map(i => esc(i.n)).join("、")}<br>` : ""}備註：${esc(note)}` : "備註（缺貨／異常／需補貨）："}</div>
+</div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
+}
 function paperHtml(filled) {
+  if (LOC === "mk") return paperHtmlMk(filled);
   const cats = S.cfg.cats, maxn = Math.max(...cats.map(c => itemsOf(c).length));
   const fs = maxn > 34 ? 8 : maxn > 30 ? 8.5 : 9.5;
   const c = counts();
