@@ -466,8 +466,8 @@ const DEFAULT_CFG = {"cats": ["根莖類", "葉菜類", "水菜類", "瓜果類"
 DEFAULT_CFG.people = ["土豆", "順", "巃騰", "小沾"];
 const CAT_COLORS = { "根莖類": "#E8955A", "葉菜類": "#6FAE4E", "水菜類": "#4F95C9", "瓜果類": "#E2B33A", "其他": "#8C8C8C", "菇類": "#8E6BB8", "辛香類": "#D8604A" };
 const CAT_TINTS = { "根莖類": "#FCE4D6", "葉菜類": "#E2EFDA", "水菜類": "#DDEBF7", "瓜果類": "#FFF2CC", "其他": "#E9E9E9", "菇類": "#E7E1F0", "辛香類": "#FADBD2" };
-const catColor = c => CAT_COLORS[c] || "#7A8A7E";
-const catTint = c => CAT_TINTS[c] || "#E4E8E1";
+const catColor = c => CAT_COLORS[c] || (c === "冷凍類" ? "#3A8FB7" : "#7A8A7E");
+const catTint = c => CAT_TINTS[c] || (c === "冷凍類" ? "#DDEFF7" : "#E4E8E1");
 
 /* ================= storage =================
    兩個位置分開存：倉庫 inventory/{日期}、市場 inventory_market/{日期}；品項設定共用 */
@@ -603,10 +603,11 @@ const WD = "日一二三四五六";
 const addDay = (d, n) => { const x = new Date(d + "T00:00"); x.setDate(x.getDate() + n); return x.toLocaleDateString("sv-SE") };
 const wdOf = d => new Date(d + "T00:00").getDay();
 const freqOf = i => String(i.f || "");
-function freqLabel(f) { f = String(f || ""); if (f === "2") return "隔天點"; if (f[0] === "w" && f.length > 1) return "貨運" + [...f.slice(1)].map(d => WD[d]).join("") + "前一天點"; return "" }
+function freqLabel(f) { f = String(f || ""); if (f === "2") return "隔天點"; if (f[0] === "d" && f.length > 1) return "每週" + [...f.slice(1)].map(d => WD[d]).join("、") + "點"; if (f[0] === "w" && f.length > 1) return "貨運" + [...f.slice(1)].map(d => WD[d]).join("") + "前一天點"; return "" }
 function parseFreq(v) {
   const t = String(v ?? "").trim(); if (!t || /每天|每日/.test(t)) return "";
   if (/^(2|2天|隔天|隔天點|兩天|二天|每2天|每兩天|兩天一次|2天一次)$/.test(t)) return "2";
+  if (!/貨運/.test(t) && /^(每週|周|週|星期)/.test(t)) { const ds = [...new Set([...t.replace(/每週|[星期週周禮拜點、,，]/g, "")].map(ch => WD.indexOf(ch)).filter(k => k >= 0))].sort(); if (ds.length) return "d" + ds.join("") }
   const ds = [...new Set([...t.replace(/貨運日|[星期週周禮拜]/g, "")].map(ch => WD.indexOf(ch)).filter(k => k >= 0))].sort();
   return ds.length ? "w" + ds.join("") : "";
 }
@@ -614,6 +615,7 @@ function isDue(i, d = S.date) {
   const f = freqOf(i); if (!f) return true;
   if (f === "2") { if (!S.prev || S.prev.date !== addDay(d, -1)) return true; return !(S.prev.counts && S.prev.counts[i.id] != null) }
   if (f[0] === "w") return f.slice(1).includes(String(wdOf(addDay(d, 1))));
+  if (f[0] === "d") return f.slice(1).includes(String(wdOf(d)));
   return true;
 }
 /* 今天要點的：排到今天，或今天已經點了 */
@@ -622,6 +624,7 @@ function nextDue(i) {
   const f = freqOf(i);
   if (f === "2") return addDay(S.date, 1);
   if (f[0] === "w") { for (let k = 1; k <= 7; k++) { const d = addDay(S.date, k); if (f.slice(1).includes(String(wdOf(addDay(d, 1))))) return d } }
+  if (f[0] === "d") { for (let k = 1; k <= 7; k++) { const d = addDay(S.date, k); if (f.slice(1).includes(String(wdOf(d)))) return d } }
   return null;
 }
 const reqMissing = () => items().filter(i => isReq(i) && isDue(i) && counts()[i.id] == null);
@@ -633,7 +636,7 @@ $("#date").value = S.date;
 
 store.watchCfg(c => {
   if (!c || !c.items || !c.items.length) { S.cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (store.mode === "fb") store.saveCfg(S.cfg).catch(err) }
-  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3() }
+  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1() }
   if (!S.cfg.people || !S.cfg.people.length) S.cfg.people = DEFAULT_CFG.people.slice();
   if (!S.cat || !S.cfg.cats.includes(S.cat)) S.cat = S.cfg.cats[0];
   renderWho(); render();
@@ -673,6 +676,30 @@ function seedMarket3() {
   const cfg = JSON.parse(JSON.stringify(S.cfg));
   cfg.items.forEach(i => { if (i.mko) { delete i.mko; i.mk = 1 } });
   cfg.mkSeed3 = 1; stores.wh.saveCfg(cfg).catch(err);
+}
+/* 一次性：新增「冷凍類」（每週二、五點）和品項、單位；已有的冷凍品移過來。不記數量 */
+function seedFrozen1() {
+  if (window.__frzBusy) return; window.__frzBusy = 1;
+  const D = "2026-10-02";
+  /* [品名, 單位, 10/2 數量（null＝沒填）, 已有品項的舊名] */
+  const L = [["凍綠青花", "箱", 7, "凍綠青花"], ["凍白花", "箱", 5], ["凍紅青花", "箱", null, "凍紅青花"], ["凍南瓜", "箱", 2.5], ["龍蝦", "包", 3], ["四季豆", "箱", 6],
+    ["凍玉米筍", "件", 2.5, "凍玉米筍"], ["馬鈴薯丁", "包", 8], ["凍玉米粒", "箱", 2, "凍玉米粒"], ["凍毛豆仁", "箱", 2, "凍毛豆仁"], ["手工肉羹", "包", 0], ["小甜條", "包", 6],
+    ["鑫鑫腸", "包", 6], ["豬耳朵", "包", 6], ["小貢丸", "袋", 1, "小貢丸"], ["大貢丸", "袋/小包", { "袋": 2, "小包": 10 }, "大貢丸"], ["鴨肉丸", "大包", 1], ["百葉", "包", null],
+    ["米血（三角）", "包", 6], ["米血丁", "包", null, "米血丁"], ["凍豆腐", "包", 20, "凍豆腐"], ["三色豆", "箱", 1], ["芋角", "包", 1, "芋角"], ["檸檬汁950cc", "瓶", 13, "檸檬汁"],
+    ["薑汁", "瓶", 5], ["蝦皮", "包", 1], ["青豆仁", "包", 10], ["薯餅", "包", 13], ["金吉汁", "瓶", 3], ["葡萄汁", "瓶", 2], ["柳橙汁", "瓶", 2], ["花枝丸", "包", 3],
+    ["香腸", "包", 2], ["煙燻豆包", "包", 3], ["大香腸", "袋", 0], ["高梁香腸", "包", null]];
+  const cfg = JSON.parse(JSON.stringify(S.cfg)), t0 = Date.now().toString(36), counts = [];
+  if (!cfg.cats.includes("冷凍類")) cfg.cats.push("冷凍類");
+  const moved = [];
+  L.forEach(([n, u, q, old], k) => {
+    let it = old ? cfg.items.find(i => i.n === old) : cfg.items.find(i => i.n === n && i.c === "冷凍類");
+    if (it) { const ix = cfg.items.indexOf(it); cfg.items.splice(ix, 1); it.n = n; it.c = "冷凍類"; it.u = u; moved.push(it) }
+    else it = { id: `z${t0}${k}`, n, u, c: "冷凍類" };
+    it.f = "d25"; cfg.items.push(it);
+    if (q != null) counts.push([it, q]);
+  });
+  cfg.frz1 = 1;
+  stores.wh.saveCfg(cfg).then(() => { window.__frzBusy = 0; toast(`已新增冷凍類 ${L.length} 項（每週二、五點）`, 3500) }).catch(e => { window.__frzBusy = 0; err(e) });
 }
 function setLoc(l) {
   LOC = l; try { localStorage.setItem("caixian-inv-loc", l) } catch {}
@@ -1563,12 +1590,14 @@ function drawSet() {
       <input class="m" type="number" inputmode="decimal" min="0" step="0.5" value="${+i.m > 0 ? +i.m : ""}" data-f="m" placeholder="—" aria-label="安全庫存">
       <button class="rqb ${isReq(i) ? "on" : ""}" data-a="rq" aria-label="必點">必</button>
       <button class="mkb ${i.mk || i.mko ? "on" : ""}" data-a="mk" aria-label="市場也要點" title="點一下切換：只倉庫 ↔ 倉庫＋市場">${i.mk || i.mko ? "兩" : "倉"}</button>
-      <button class="fqb ${freqOf(i) ? "on" : ""}" data-a="fq" aria-label="點貨頻率" title="${esc(freqLabel(freqOf(i)) || "每天點")}">${freqOf(i) === "2" ? "隔" : freqOf(i) ? "運" : "天"}</button>
+      <button class="fqb ${freqOf(i) ? "on" : ""}" data-a="fq" aria-label="點貨頻率" title="${esc(freqLabel(freqOf(i)) || "每天點")}">${freqOf(i) === "2" ? "隔" : freqOf(i)[0] === "d" ? "週" : freqOf(i) ? "運" : "天"}</button>
       <button data-a="up" aria-label="上移">↑</button>
       <select data-f="c" aria-label="換分類">${dr.cats.map(c => `<option ${c === i.c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
       <button class="del" data-a="del" aria-label="刪除">✕</button></div>${dr._fq === i.id ? `<div class="fq-box" data-id="${i.id}">
         <div class="fq-t">${esc(i.n)} 多久點一次？</div>
         <div class="seg"><button data-fq="" class="${!freqOf(i) ? "on" : ""}">每天</button><button data-fq="2" class="${freqOf(i) === "2" ? "on" : ""}">隔天點</button></div>
+        <div class="fq-t" style="margin-top:8px">固定星期幾點（例如冷凍類週二、五點）</div>
+        <div class="seg">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button data-fd="${d}" class="${freqOf(i)[0] === "d" && freqOf(i).includes(String(d)) ? "on" : ""}">${WD[d]}</button>`).join("")}</div>
         <div class="fq-t" style="margin-top:8px">貨運日（勾選後，會在貨運前一天點）</div>
         <div class="seg">${[1, 2, 3, 4, 5, 6, 0].map(d => `<button data-fw="${d}" class="${freqOf(i)[0] === "w" && freqOf(i).includes(String(d)) ? "on" : ""}">${WD[d]}</button>`).join("")}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${freqLabel(freqOf(i)) || "每天點"}</div></div>` : ""}`).join("")}</div>
@@ -1604,8 +1633,9 @@ function drawSet() {
   $("#sI").addEventListener("click", e => {
     const bx = e.target.closest(".fq-box"); if (!bx) return;
     const it = dr.items.find(i => i.id === bx.dataset.id); if (!it) return;
-    const q = e.target.closest("[data-fq]"), w = e.target.closest("[data-fw]");
+    const q = e.target.closest("[data-fq]"), w = e.target.closest("[data-fw]"), fd = e.target.closest("[data-fd]");
     if (q) { if (q.dataset.fq) it.f = q.dataset.fq; else delete it.f }
+    else if (fd) { const cur = freqOf(it)[0] === "d" ? freqOf(it).slice(1).split("") : []; const d = fd.dataset.fd; const nx = cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]; if (nx.length) it.f = "d" + nx.sort().join(""); else delete it.f }
     else if (w) { const cur = freqOf(it)[0] === "w" ? freqOf(it).slice(1).split("") : []; const d = w.dataset.fw; const nx = cur.includes(d) ? cur.filter(x => x !== d) : [...cur, d]; if (nx.length) it.f = "w" + nx.sort().join(""); else delete it.f }
     else return;
     dirty(); drawSet();
@@ -1630,7 +1660,7 @@ function drawSet() {
   $("#sR").onclick = () => { S.editing = false; S.imp = null; renderSet() };
   $("#sS").onclick = () => saveDraft("設定已儲存");
   $("#sDef").onclick = async () => { if (!confirm("把品項清單還原成原始版本？（人員名單不變，紀錄不受影響）")) return;
-    const c = JSON.parse(JSON.stringify(DEFAULT_CFG)); c.people = S.cfg.people; c.mkSeed1 = 1; c.mkSeed2 = 1; c.mkSeed3 = 1; await store.saveCfg(c).catch(err); S.editing = false; renderSet(); toast("已還原") };
+    const c = JSON.parse(JSON.stringify(DEFAULT_CFG)); c.people = S.cfg.people; c.mkSeed1 = 1; c.mkSeed2 = 1; c.mkSeed3 = 1; c.frz1 = 1; await store.saveCfg(c).catch(err); S.editing = false; renderSet(); toast("已還原") };
   $("#xDown").onclick = downloadItems;
   $("#xUp").onclick = () => { $("#xlIn").value = ""; $("#xlIn").click() };
 }
@@ -1639,7 +1669,7 @@ async function saveDraft(msg) {
   const dr = S.draft;
   const cats = dr.cats.filter(c => dr.items.some(i => i.c === c));
   const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r, f, mk, mko, mu }) => { const o = { id, n, u: u || "", c }; if (m > 0) o.m = m; if (r) o.r = 1; if (f) o.f = f; if (mko) o.mko = 1; else if (mk) o.mk = 1; if (mu && String(u || "").split("/").includes(mu)) o.mu = mu; return o }), people: dr.people.length ? dr.people : ["土豆"] };
-  if (S.cfg.mkSeed1) c.mkSeed1 = 1; if (S.cfg.mkSeed2) c.mkSeed2 = 1; if (S.cfg.mkSeed3) c.mkSeed3 = 1;   /* 一次性設定的紀錄要保留，免得重跑 */
+  if (S.cfg.mkSeed1) c.mkSeed1 = 1; if (S.cfg.mkSeed2) c.mkSeed2 = 1; if (S.cfg.mkSeed3) c.mkSeed3 = 1; if (S.cfg.frz1) c.frz1 = 1;   /* 一次性設定的紀錄要保留，免得重跑 */
   try { await store.saveCfg(c); S.editing = false; S.imp = null; toast(msg) } catch (e) { err(e) }
 }
 async function autoSuggest() {
@@ -1657,7 +1687,7 @@ async function autoSuggest() {
 function downloadItems() {
   const src = S.draft || S.cfg;
   const rows = [["分類", "品名", "單位", "安全量", "必點", "點貨頻率", "市場"]];
-  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", +i.m > 0 ? +i.m : "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : "", i.mko ? "只" : i.mk ? "V" : ""])));
+  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", +i.m > 0 ? +i.m : "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i)[0] === "d" ? "每週" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : "", i.mko ? "只" : i.mk ? "V" : ""])));
   const help = [["欄位", "怎麼填"], ["分類", "照原本的分類名稱；新分類也可以，會自動加在最後。空白＝跟上一列同分類"], ["品名", "必填。同一品項兩種包裝要分開點，就寫兩列不同品名（例：青江菜(件)、青江菜(捆)）"],
     ["單位", "一種單位：箱。同品項會混著不同單位：箱/斤（點貨時可以同時輸入 2箱 5斤）"], ["安全量", "數字，以第一個單位計。空白＝不追蹤"], ["必點", "填 V（或 是、必、1）＝必點，沒點完不能按完成"], ["點貨頻率", "空白＝每天點；隔天＝兩天點一次（昨天點過今天就不用）；貨運二五＝星期二、五貨運，前一天（一、四）點"],
     ["排序", "表格上下順序就是 App 裡的順序"], ["刪除", "整列刪掉即可，過去的紀錄會保留"]];
