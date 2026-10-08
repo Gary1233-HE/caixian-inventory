@@ -237,6 +237,7 @@ select.in{appearance:auto}
 .ed-row .m::-webkit-inner-spin-button,.ed-row .m::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .ed-row button,.ed-row select{width:32px;height:36px;border-radius:8px;background:var(--bg);font-size:14px;flex:none;border:0}
 .ed-row .rqb{font-weight:900;color:#B7BDB5}.ed-row .rqb.on{background:var(--warn);color:#fff}
+.ed-row .rmb{font-weight:900;color:#B7BDB5;font-size:11px!important;padding:0!important}.ed-row .rmb.on{background:#7B4FC9;color:#fff}
 .ed-row .del{color:var(--warn)}
 .ed-row .fqb{font-weight:900;color:#B7BDB5}.ed-row .fqb.on{background:#4F95C9;color:#fff}
 @media (max-width:520px){
@@ -255,6 +256,7 @@ select.in{appearance:auto}
 .diffbox .a{color:var(--ok)}.diffbox .d{color:var(--warn)}.diffbox .c{color:var(--low)}
 .toast{position:fixed;left:50%;top:calc(var(--safe-t) + 70px);transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:90;opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis}
 .toast.show{opacity:1}
+#kpOk:disabled{opacity:.45;text-decoration:line-through}
 .phs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;margin-top:10px}
 .ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg);border:1px solid var(--line);padding:0}
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
@@ -555,11 +557,17 @@ let tt; function toast(m, ms = 2000) { const t = $("#toast"); t.textContent = m;
 const units = i => { const a = String(i.u || "").split(/[\/、,，|]/).map(s => s.trim()).filter(Boolean); return a.length ? a : [""] };
 /* 安全量是「倉庫＋市場」合計的標準，所以在市場頁不比較安全量 */
 const minOf = i => (LOC === "mk" ? 0 : (+i.m > 0 ? +i.m : 0));
-const isReq = i => !!i.r;
+/* 必點分開記：倉庫看 r，市場看 rm（市場必點的，倉庫不一定必點） */
+const isReq = i => LOC === "mk" ? !!i.rm : !!i.r;
 /* value of one unit inside an entry */
 const uVal = (i, e, u) => { if (!e) return null; if (e.vs) return e.vs[u] ?? null; return u === units(i)[0] ? (e.v ?? null) : null };
 const isZero = e => !!e && (e.vs ? Object.values(e.vs).length > 0 && Object.values(e.vs).every(x => x === 0) : e.v === 0);
-const firstVal = (i, e) => uVal(i, e, units(i)[0]);
+/* 第一個單位的數量；其他單位有設換算（ur，例如 地瓜葉捆：1捆＝9小把）就一起折算進來，例如 2捆 4小把 ＝ 2.44捆 */
+const firstVal = (i, e) => {
+  const us = units(i); let v = uVal(i, e, us[0]);
+  if (e && e.vs && i.ur) { let add = 0, any = v != null; us.slice(1).forEach(u => { const r = +i.ur[u], q = e.vs[u]; if (r > 0 && q != null) { add += q / r; any = true } }); if (any) v = Math.round(((v || 0) + add) * 100) / 100 }
+  return v;
+};
 const isLow = (i, e) => { if (!e || !minOf(i) || isZero(e)) return false; const v = firstVal(i, e); return v != null && v < minOf(i) };
 const needOf = (i, e) => { if (!e || !minOf(i)) return 0; if (isZero(e)) return minOf(i); const v = firstVal(i, e); return v != null && v < minOf(i) ? +(minOf(i) - v).toFixed(2) : 0 };
 /* units actually present in an entry: item units first, then any extra unit picked while counting */
@@ -569,6 +577,8 @@ const isMulti = (i, e) => !!e && entryUnits(i, e).filter(u => uVal(i, e, u) != n
 const plainNum = (i, e) => !isMulti(i, e) && firstVal(i, e) != null;
 /* 「夠用」：不點數量，只標記庫存足夠 { ok: 1 } */
 const isOk = e => !!e && !!e.ok;
+/* 一定要點數量、不能按「夠用」的品項（綠豆芽、黃豆芽） */
+const mustQty = it => !!it && (it.nq || /^(綠豆芽|黃豆芽|豆芽菜)/.test(it.n || ""));
 function qtyText(i, e) {
   if (!e) return "";
   if (isOk(e)) return "夠用";
@@ -592,7 +602,8 @@ const S = {
 /* 市場只點設定裡勾「市」的品項 */
 /* 位置：沒標＝只在倉庫；mk＝倉庫和市場都點（數量合計）；mko＝只在市場點 */
 /* 倉庫：全部品項都在倉庫點；市場：只列勾了「市場也點」的（或今天已經點過的） */
-const items = () => { const c = (S.day && S.day.counts) || {}; return LOC === "mk" ? S.cfg.items.filter(i => i.mk || i.mko || c[i.id]) : S.cfg.items };
+/* 倉庫：不含「只在市場點」的品項（除非那天倉庫已經點過）；市場：勾了市場的（倉庫＋市場、只市場），或今天已經點過的 */
+const items = () => { const c = (S.day && S.day.counts) || {}; return LOC === "mk" ? S.cfg.items.filter(i => i.mk || i.mko || c[i.id]) : S.cfg.items.filter(i => !i.mko || c[i.id]) };
 const itemsOf = c => items().filter(i => i.c === c);
 const itemById = id => items().find(i => i.id === id);
 const counts = () => (S.day && S.day.counts) || {};
@@ -636,7 +647,7 @@ $("#date").value = S.date;
 
 store.watchCfg(c => {
   if (!c || !c.items || !c.items.length) { S.cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (store.mode === "fb") store.saveCfg(S.cfg).catch(err) }
-  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1() }
+  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6() }
   if (!S.cfg.people || !S.cfg.people.length) S.cfg.people = DEFAULT_CFG.people.slice();
   if (!S.cat || !S.cfg.cats.includes(S.cat)) S.cat = S.cfg.cats[0];
   renderWho(); render();
@@ -658,10 +669,10 @@ function seedMarket1() {
     const ex = cfg.items.find(i => i.n === n);
     if (ex) { ex.mk = 1; const us = String(ex.u || "").split("/").filter(Boolean), mus = u.split("/"); if (!us.includes(mus[0])) ex.mu = mus[0]; mus.forEach(x => { if (!us.includes(x)) us.push(x) }); ex.u = us.join("/"); return }
     if (!cfg.cats.includes(c)) cfg.cats.push(c);
-    const last = cfg.items.map(i => i.c).lastIndexOf(c), it = { id: `m${t0}${k}`, n, u, c, mk: 1 };
+    const last = cfg.items.map(i => i.c).lastIndexOf(c), it = { id: `m${t0}${k}`, n, u, c, mko: 1 };
     cfg.items.splice(last >= 0 ? last + 1 : cfg.items.length, 0, it);
   });
-  cfg.mkSeed1 = 1; cfg.mkSeed2 = 1; cfg.mkSeed3 = 1;
+  cfg.mkSeed1 = 1; cfg.mkSeed2 = 1; cfg.mkSeed3 = 1; cfg.mkSeed6 = 1;
   stores.wh.saveCfg(cfg).then(() => toast("已新增市場品項 " + MK_SEED1.length + " 項", 3000)).catch(err);
 }
 /* 一次性：上一版新增的市場品項（id 是 m 開頭）改成「只在市場」，倉庫清單不會多出來 */
@@ -700,6 +711,25 @@ function seedFrozen1() {
   });
   cfg.frz1 = 1;
   stores.wh.saveCfg(cfg).then(() => { window.__frzBusy = 0; toast(`已新增冷凍類 ${L.length} 項（每週二、五點）`, 3500) }).catch(e => { window.__frzBusy = 0; err(e) });
+}
+/* 一次性：之前在市場設的必點（星號）改成「市場必點」，倉庫不再跟著必點 */
+function seedMarket4() {
+  const cfg = JSON.parse(JSON.stringify(S.cfg));
+  cfg.items.forEach(i => { if ((i.mk || i.mko) && i.r) { i.rm = 1; delete i.r } });
+  cfg.mkSeed4 = 1; stores.wh.saveCfg(cfg).catch(err);
+}
+/* 一次性：娃娃菜、大辣、小辣、修清玉米，倉庫也要必點（市場必點照舊） */
+function seedMarket5() {
+  const cfg = JSON.parse(JSON.stringify(S.cfg)), names = ["娃娃菜", "大辣", "小辣", "修清玉米"];
+  cfg.items.forEach(i => { if (names.includes(i.n)) i.r = 1 });
+  cfg.mkSeed5 = 1; stores.wh.saveCfg(cfg).catch(err);
+}
+/* 一次性：市場才有的品項改回「只在市場」，倉庫清單不顯示；跟倉庫相同的（娃娃菜、大辣、小辣、修清玉米）維持「倉庫＋市場」聯通 */
+function seedMarket6() {
+  const only = ["龍鬚菜", "生菱角", "花生", "麻竹筍", "包好菱角", "撥好菱角", "秋葵包好", "花生包好", "去殼茭白筍", "泰國小青", "泰國削青", "美國大筍", "紅蔥仁", "大香菇", "金針2.5kg", "杏C600g", "杏B600g"];
+  const cfg = JSON.parse(JSON.stringify(S.cfg));
+  cfg.items.forEach(i => { if (only.includes(i.n) && /^m/.test(String(i.id)) && (i.mk || i.mko)) { delete i.mk; i.mko = 1 } });
+  cfg.mkSeed6 = 1; stores.wh.saveCfg(cfg).catch(err);
 }
 function setLoc(l) {
   LOC = l; try { localStorage.setItem("caixian-inv-loc", l) } catch {}
@@ -887,6 +917,7 @@ function renderKp() {
   const act = all.filter(isActive), pos = act.indexOf(it);
   $("#kpSub").textContent = `${it.c}　${pos >= 0 ? `第 ${pos + 1} / ${act.length} 項` : "今天不用點"}${freqOf(it) ? "　" + freqLabel(freqOf(it)) : ""}`;
   $("#kpReq").classList.toggle("hide", !isReq(it));
+  $("#kpOk").disabled = mustQty(it); $("#kpOk").textContent = mustQty(it) ? "要點數量" : "夠用";
   // info
   const mn = minOf(it), sf = $("#kpSafe");
   sf.classList.toggle("none", !mn);
@@ -991,7 +1022,7 @@ function openAnom(msg, it) {
 $("#anFix").onclick = () => { $("#anom").classList.add("hide"); if (S.kp) { S.kp.arm = false; const u = S.kp.u; S.kp.fresh[u] = true; renderKp() } };
 $("#anOk").onclick = () => { $("#anom").classList.add("hide"); $("#kpGo").click() };
 $("#kpPrev").onclick = () => step(-1);
-$("#kpOk").onclick = () => { const it = itemById(S.kp.id); store.setCount(S.date, it.id, { ok: 1, by: S.me, t: Date.now(), n: it.n, u: it.u, c: it.c }); step(1) };
+$("#kpOk").onclick = () => { const it = itemById(S.kp.id); if (mustQty(it)) return toast(`${it.n} 一定要點數量`); store.setCount(S.date, it.id, { ok: 1, by: S.me, t: Date.now(), n: it.n, u: it.u, c: it.c }); step(1) };
 $("#kpZero").onclick = () => { const it = itemById(S.kp.id), vals = {}; units(it).forEach(u => vals[u] = 0); store.setCount(S.date, it.id, buildEntry(it, vals)); step(1) };
 $("#kpClear").onclick = () => { store.setCount(S.date, S.kp.id, null); S.kp.us.forEach(u => { S.kp.bufs[u] = ""; S.kp.fresh[u] = true }); S.kp.touched = {}; S.kp.arm = false; renderKp() };
 $("#kpClose").onclick = closeKp;
@@ -1664,7 +1695,7 @@ function drawSet() {
     <div id="impBox"></div></div>
 
   <div class="panel"><h3>品項管理</h3>
-    <div class="mk-bulk"><span>位置按鈕：<b>倉</b>只在倉庫點｜<b>兩</b>倉庫和市場都點（叫貨合計）。所有品項都在倉庫點。這類市場要點 <b>${dr.items.filter(i => i.c === cat && (i.mk || i.mko)).length}</b> 項</span><button class="btn sm" id="mkAll">這類全部市場點</button><button class="btn sm" id="mkNone">這類市場都不點</button></div>
+    <div class="mk-bulk"><span>位置按鈕：<b>倉</b>只在倉庫點｜<b>兩</b>倉庫和市場都點，是同一個品項，叫貨時數量合計｜<b>市</b>只在市場點，倉庫清單不顯示。這類市場要點 <b>${dr.items.filter(i => i.c === cat && (i.mk || i.mko)).length}</b> 項</span><button class="btn sm" id="mkAll">這類全部市場點</button><button class="btn sm" id="mkNone">這類市場都不點</button></div>
     <input type="search" class="in" id="sQ" placeholder="搜尋品項（全部分類一起找）" value="${esc(S.setQ || "")}" style="margin-bottom:8px">
     <select class="in" id="sC" style="margin-bottom:10px${S.setQ ? ";display:none" : ""}">${dr.cats.map(c => `<option ${c === cat ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
     <div class="ed-head"><span style="flex:1">品名</span><span style="width:62px;text-align:center">單位</span><span style="width:48px;text-align:center">安全量</span><span style="width:32px;text-align:center">必點</span><span style="width:32px;text-align:center">頻率</span><span style="width:104px"></span></div>
@@ -1672,8 +1703,9 @@ function drawSet() {
       <input class="n" value="${esc(i.n)}" data-f="n" aria-label="品名">
       <input class="u" value="${esc(i.u)}" data-f="u" aria-label="單位" placeholder="箱/斤">
       <input class="m" type="number" inputmode="decimal" min="0" step="0.5" value="${+i.m > 0 ? +i.m : ""}" data-f="m" placeholder="—" aria-label="安全庫存">
-      <button class="rqb ${isReq(i) ? "on" : ""}" data-a="rq" aria-label="必點">必</button>
-      <button class="mkb ${i.mk || i.mko ? "on" : ""}" data-a="mk" aria-label="市場也要點" title="點一下切換：只倉庫 ↔ 倉庫＋市場">${i.mk || i.mko ? "兩" : "倉"}</button>
+      <button class="rqb ${i.r ? "on" : ""}" data-a="rq" aria-label="倉庫必點" title="倉庫必點">必</button>
+      ${i.mk || i.mko ? `<button class="rmb ${i.rm ? "on" : ""}" data-a="rqm" aria-label="市場必點" title="市場必點">市必</button>` : ""}
+      <button class="mkb ${i.mko ? "only" : i.mk ? "on" : ""}" data-a="mk" aria-label="點貨位置" title="點一下切換：只倉庫 → 倉庫＋市場（相同品項聯通）→ 只市場（倉庫不顯示）">${i.mko ? "市" : i.mk ? "兩" : "倉"}</button>
       <button class="fqb ${freqOf(i) ? "on" : ""}" data-a="fq" aria-label="點貨頻率" title="${esc(freqLabel(freqOf(i)) || "每天點")}">${freqOf(i) === "2" ? "隔" : freqOf(i)[0] === "d" ? "週" : freqOf(i) ? "運" : "天"}</button>
       <button data-a="up" aria-label="上移">↑</button>
       <select data-f="c" aria-label="換分類">${dr.cats.map(c => `<option ${c === i.c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>
@@ -1728,7 +1760,8 @@ function drawSet() {
     const b = e.target.closest("[data-a]"); if (!b) return; const id = b.closest("[data-id]").dataset.id;
     const arr = dr.items, idx = arr.findIndex(i => i.id === id), it = arr[idx]; dirty();
     if (b.dataset.a === "rq") { if (it.r) delete it.r; else it.r = 1 }
-    else if (b.dataset.a === "mk") { if (it.mk || it.mko) { delete it.mk; delete it.mko } else it.mk = 1 }
+    else if (b.dataset.a === "rqm") { if (it.rm) delete it.rm; else it.rm = 1 }
+    else if (b.dataset.a === "mk") { if (it.mko) { delete it.mko } else if (it.mk) { delete it.mk; it.mko = 1 } else it.mk = 1 }
     else if (b.dataset.a === "fq") { dr._fq = dr._fq === id ? null : id }
     else if (b.dataset.a === "del") { if (!confirm(`刪除「${it.n}」？過去的紀錄會保留。`)) return; arr.splice(idx, 1) }
     else if (b.dataset.a === "up") { let k = idx - 1; while (k >= 0 && arr[k].c !== it.c) k--; if (k >= 0) [arr[idx], arr[k]] = [arr[k], arr[idx]] }
@@ -1738,13 +1771,14 @@ function drawSet() {
     const n = $("#aN").value.trim(); if (!n) return toast("先輸入品名");
     let at = -1; dr.items.forEach((x, k) => { if (x.c === cat) at = k });
     const ni = { id: newId(dr.items), n, u: $("#aU").value.trim(), c: cat }, m = parseFloat($("#aM").value); if (m > 0) ni.m = m;
+    if (LOC === "mk") ni.mko = 1;   /* 在市場頁新增的品項，預設只在市場點，倉庫不顯示 */
     dr.items.splice(at + 1, 0, ni); dirty(); drawSet();
   };
   $("#sAuto").onclick = autoSuggest;
   $("#sR").onclick = () => { S.editing = false; S.imp = null; renderSet() };
   $("#sS").onclick = () => saveDraft("設定已儲存");
   $("#sDef").onclick = async () => { if (!confirm("把品項清單還原成原始版本？（人員名單不變，紀錄不受影響）")) return;
-    const c = JSON.parse(JSON.stringify(DEFAULT_CFG)); c.people = S.cfg.people; c.mkSeed1 = 1; c.mkSeed2 = 1; c.mkSeed3 = 1; c.frz1 = 1; await store.saveCfg(c).catch(err); S.editing = false; renderSet(); toast("已還原") };
+    const c = JSON.parse(JSON.stringify(DEFAULT_CFG)); c.people = S.cfg.people; c.mkSeed1 = 1; c.mkSeed2 = 1; c.mkSeed3 = 1; c.frz1 = 1; c.mkSeed4 = 1; c.mkSeed5 = 1; c.mkSeed6 = 1; await store.saveCfg(c).catch(err); S.editing = false; renderSet(); toast("已還原") };
   $("#xDown").onclick = downloadItems;
   $("#xUp").onclick = () => { $("#xlIn").value = ""; $("#xlIn").click() };
 }
@@ -1752,8 +1786,8 @@ function newId(arr) { const max = arr.reduce((m, i) => Math.max(m, +String(i.id)
 async function saveDraft(msg) {
   const dr = S.draft;
   const cats = dr.cats.filter(c => dr.items.some(i => i.c === c));
-  const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r, f, mk, mko, mu }) => { const o = { id, n, u: u || "", c }; if (m > 0) o.m = m; if (r) o.r = 1; if (f) o.f = f; if (mko) o.mko = 1; else if (mk) o.mk = 1; if (mu && String(u || "").split("/").includes(mu)) o.mu = mu; return o }), people: dr.people.length ? dr.people : ["土豆"] };
-  if (S.cfg.mkSeed1) c.mkSeed1 = 1; if (S.cfg.mkSeed2) c.mkSeed2 = 1; if (S.cfg.mkSeed3) c.mkSeed3 = 1; if (S.cfg.frz1) c.frz1 = 1;   /* 一次性設定的紀錄要保留，免得重跑 */
+  const c = { cats: cats.length ? cats : dr.cats, items: dr.items.filter(i => i.n).map(({ id, n, u, c, m, r, rm, f, mk, mko, mu, ur }) => { const o = { id, n, u: u || "", c }; if (ur && typeof ur === "object") { const us = String(u || "").split("/"), k = Object.fromEntries(Object.entries(ur).filter(([x, v]) => us.includes(x) && +v > 0)); if (Object.keys(k).length) o.ur = k } if (m > 0) o.m = m; if (r) o.r = 1; if (rm && (mk || mko)) o.rm = 1; if (f) o.f = f; if (mko) o.mko = 1; else if (mk) o.mk = 1; if (mu && String(u || "").split("/").includes(mu)) o.mu = mu; return o }), people: dr.people.length ? dr.people : ["土豆"] };
+  if (S.cfg.mkSeed1) c.mkSeed1 = 1; if (S.cfg.mkSeed2) c.mkSeed2 = 1; if (S.cfg.mkSeed3) c.mkSeed3 = 1; if (S.cfg.frz1) c.frz1 = 1; if (S.cfg.mkSeed4) c.mkSeed4 = 1; if (S.cfg.mkSeed5) c.mkSeed5 = 1; if (S.cfg.mkSeed6) c.mkSeed6 = 1;   /* 一次性設定的紀錄要保留，免得重跑 */
   try { await store.saveCfg(c); S.editing = false; S.imp = null; toast(msg) } catch (e) { err(e) }
 }
 async function autoSuggest() {
@@ -1770,9 +1804,9 @@ async function autoSuggest() {
 /* ---------- Excel item import / export ---------- */
 function downloadItems() {
   const src = S.draft || S.cfg;
-  const rows = [["分類", "品名", "單位", "安全量", "必點", "點貨頻率", "市場"]];
-  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", +i.m > 0 ? +i.m : "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i)[0] === "d" ? "每週" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : "", i.mko ? "只" : i.mk ? "V" : ""])));
-  const help = [["欄位", "怎麼填"], ["分類", "照原本的分類名稱；新分類也可以，會自動加在最後。空白＝跟上一列同分類"], ["品名", "必填。同一品項兩種包裝要分開點，就寫兩列不同品名（例：青江菜(件)、青江菜(捆)）"],
+  const rows = [["分類", "品名", "單位", "安全量", "必點", "點貨頻率", "市場", "市場必點"]];
+  src.cats.forEach(c => src.items.filter(i => i.c === c).forEach(i => rows.push([i.c, i.n, i.u || "", +i.m > 0 ? +i.m : "", isReq(i) ? "V" : "", freqOf(i) === "2" ? "隔天" : freqOf(i)[0] === "d" ? "每週" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : freqOf(i) ? "貨運" + [...freqOf(i).slice(1)].map(d => WD[d]).join("") : "", i.mko ? "只" : i.mk ? "V" : "", i.rm ? "V" : ""])));
+  const help = [["欄位", "怎麼填"], ["市場必點", "填 V＝市場點貨時必點（跟「必點」＝倉庫必點分開）"], ["分類", "照原本的分類名稱；新分類也可以，會自動加在最後。空白＝跟上一列同分類"], ["品名", "必填。同一品項兩種包裝要分開點，就寫兩列不同品名（例：青江菜(件)、青江菜(捆)）"],
     ["單位", "一種單位：箱。同品項會混著不同單位：箱/斤（點貨時可以同時輸入 2箱 5斤）"], ["安全量", "數字，以第一個單位計。空白＝不追蹤"], ["必點", "填 V（或 是、必、1）＝必點，沒點完不能按完成"], ["點貨頻率", "空白＝每天點；隔天＝兩天點一次（昨天點過今天就不用）；貨運二五＝星期二、五貨運，前一天（一、四）點"],
     ["排序", "表格上下順序就是 App 裡的順序"], ["刪除", "整列刪掉即可，過去的紀錄會保留"]];
   saveWb([["品項", sheetOf(rows, [8, 16, 10, 8, 6, 12])], ["說明", sheetOf(help, [8, 70])]], `品項表_${today()}.xlsx`);
@@ -1786,7 +1820,7 @@ $("#xlIn").onchange = async e => {
     const hi = rows.findIndex(r => r.some(x => String(x).trim() === "品名"));
     if (hi < 0) return toast("找不到「品名」欄，請用下載的品項表修改");
     const h = rows[hi].map(x => String(x).trim()), col = names => h.findIndex(x => names.includes(x));
-    const cC = col(["分類"]), cN = col(["品名"]), cU = col(["單位"]), cM = col(["安全量", "安全庫存"]), cR = col(["必點"]), cF = col(["點貨頻率", "點貨", "頻率"]), cK = col(["市場"]);
+    const cC = col(["分類"]), cN = col(["品名"]), cU = col(["單位"]), cM = col(["安全量", "安全庫存"]), cR = col(["倉庫必點", "必點"]), cF = col(["點貨頻率", "點貨", "頻率"]), cK = col(["市場"]), cRM = col(["市場必點"]);
     const base = S.draft || JSON.parse(JSON.stringify(S.cfg));
     const old = base.items, used = new Set(), out = [], cats = [];
     let lastCat = base.cats[0], idPool = old.slice();
@@ -1803,13 +1837,14 @@ $("#xlIn").onchange = async e => {
       const fq = cF >= 0 ? parseFreq(r[cF]) : (match ? freqOf(match) : ""); if (fq) it.f = fq;
       const kv = cK >= 0 ? String(r[cK] ?? "").trim() : (match ? (match.mko ? "只" : match.mk ? "V" : "") : "");
       if (/^(只|只市場|市場only)$/i.test(kv)) it.mko = 1; else if (/^(v|是|1|y|市|o|ｖ|Ｖ|兩)$/i.test(kv)) it.mk = 1;
+      if ((it.mk || it.mko) && (cRM >= 0 ? truthy(r[cRM]) : !!(match && match.rm))) it.rm = 1;
       out.push(it);
     }
     if (!out.length) return toast("檔案裡沒有品項");
     const byId = new Map(old.map(i => [i.id, i]));
     const added = out.filter(i => !byId.has(i.id));
     const removed = old.filter(i => !out.some(o => o.id === i.id));
-    const changed = out.filter(i => { const o = byId.get(i.id); return o && (o.c !== i.c || (o.u || "") !== i.u || (+o.m || 0) !== (+i.m || 0) || !!o.r !== !!i.r || freqOf(o) !== freqOf(i) || !!o.mk !== !!i.mk || !!o.mko !== !!i.mko) });
+    const changed = out.filter(i => { const o = byId.get(i.id); return o && (o.c !== i.c || (o.u || "") !== i.u || (+o.m || 0) !== (+i.m || 0) || !!o.r !== !!i.r || freqOf(o) !== freqOf(i) || !!o.mk !== !!i.mk || !!o.mko !== !!i.mko || !!o.rm !== !!i.rm) });
     S.imp = { items: out, cats, added, removed, changed, byId, people: base.people };
     S.editing = true; drawImp();
     $("#impBox").scrollIntoView({ behavior: "smooth", block: "center" });
