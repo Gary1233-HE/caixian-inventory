@@ -647,7 +647,7 @@ $("#date").value = S.date;
 
 store.watchCfg(c => {
   if (!c || !c.items || !c.items.length) { S.cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (store.mode === "fb") store.saveCfg(S.cfg).catch(err) }
-  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6() }
+  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6(); else if (!c.mkSeed7) seedMarket7() }
   if (!S.cfg.people || !S.cfg.people.length) S.cfg.people = DEFAULT_CFG.people.slice();
   if (!S.cat || !S.cfg.cats.includes(S.cat)) S.cat = S.cfg.cats[0];
   renderWho(); render();
@@ -730,6 +730,21 @@ function seedMarket6() {
   const cfg = JSON.parse(JSON.stringify(S.cfg));
   cfg.items.forEach(i => { if (only.includes(i.n) && /^m/.test(String(i.id)) && (i.mk || i.mko)) { delete i.mk; i.mko = 1 } });
   cfg.mkSeed6 = 1; stores.wh.saveCfg(cfg).catch(err);
+}
+/* 一次性：市場的「金針2.5kg」就是倉庫的「金針A」——合併成一個品項，倉庫＋市場都點（1箱＝8袋，市場預設點袋）；
+   最近幾天市場點的金針2.5kg 數量搬到金針A（袋） */
+function seedMarket7() {
+  if (window.__mk7) return; window.__mk7 = 1;
+  const cfg = JSON.parse(JSON.stringify(S.cfg)), a = cfg.items.find(i => i.n === "金針A"), m = cfg.items.find(i => i.n === "金針2.5kg");
+  cfg.mkSeed7 = 1;
+  if (a && m) {
+    const us = String(a.u || "箱").split("/").filter(Boolean); if (!us.includes("袋")) us.push("袋");
+    a.u = us.join("/"); a.ur = { ...(a.ur || {}), "袋": 8 }; a.mk = 1; delete a.mko; a.mu = "袋"; if (m.rm) a.rm = 1;
+    cfg.items = cfg.items.filter(i => i !== m);
+    stores.mk.listDays(14).then(ds => Promise.all(ds.filter(d => d.counts && d.counts[m.id] && !d.counts[a.id]).map(d => { const x = d.counts[m.id];
+      return stores.mk.setCount(d.date, a.id, { vs: { "袋": x.v ?? 0 }, by: x.by || "", t: x.t || Date.now(), n: a.n, u: a.u, c: a.c }).then(() => stores.mk.setCount(d.date, m.id, null)) }))).catch(() => {});
+  }
+  stores.wh.saveCfg(cfg).then(() => { window.__mk7 = 0; if (a && m) toast("金針2.5kg 已併入金針A（1箱＝8袋），倉庫和市場一起算", 4000) }).catch(e => { window.__mk7 = 0; err(e) });
 }
 function setLoc(l) {
   LOC = l; try { localStorage.setItem("caixian-inv-loc", l) } catch {}
@@ -1871,7 +1886,7 @@ function drawImp() {
 /* 自動檢查新版本：網站更新後，畫面上方出現「有新版本」，點一下就換成新版；
    切回這個頁面時，沒在輸入的話會自動更新 */
 (function () {
-  var BUILD_ID = "20261010052533";
+  var BUILD_ID = "20261013071002";
   var bar = document.getElementById("updBar"), newer = false;
   function busy() { var a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) }
   function go() { location.reload() }
@@ -1879,7 +1894,7 @@ function drawImp() {
   function check() {
     fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : "" }).then(function (t) {
       var m = t && t.match(/var BUILD_ID = "([^"]+)"/);
-      if (m && m[1] !== BUILD_ID && m[1] !== "20261010052533") { newer = true; bar.style.display = "block" }
+      if (m && m[1] !== BUILD_ID && m[1] !== "20261013071002") { newer = true; bar.style.display = "block" }
     }).catch(function () {});
   }
   setTimeout(check, 4000); setInterval(check, 3 * 60 * 1000);
