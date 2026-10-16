@@ -256,6 +256,9 @@ select.in{appearance:auto}
 .diffbox .a{color:var(--ok)}.diffbox .d{color:var(--warn)}.diffbox .c{color:var(--low)}
 .toast{position:fixed;left:50%;top:calc(var(--safe-t) + 70px);transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;z-index:90;opacity:0;pointer-events:none;transition:opacity .2s;white-space:nowrap;max-width:94vw;overflow:hidden;text-overflow:ellipsis}
 .toast.show{opacity:1}
+.kp-tot{text-align:right;font-size:14px;font-weight:800;color:var(--ok,#2E7A4C);min-height:18px;margin:-4px 4px 4px}
+.kp-fl{display:block;margin-top:2px;color:#2F6FD6;font-weight:700}
+.lowc table.lc{width:100%;border-collapse:collapse;font-size:14px}.lowc table.lc td,.lowc table.lc th{padding:7px 4px;border-bottom:1px solid var(--line,#E2E5E0);text-align:left}.lowc .r{text-align:right}.lowc b.w{color:#C23B2E}.lowc small{color:#888;margin-left:3px}.lowc tr[data-go]{cursor:pointer}
 #kpOk:disabled{opacity:.45;text-decoration:line-through}
 .phs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;margin-top:10px}
 .ph{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--bg);border:1px solid var(--line);padding:0}
@@ -394,6 +397,7 @@ body.big{zoom:1.18}
     <div class="kp-h7" id="kpH7"></div>
     <div class="kp-units" id="kpUnits"></div>
     <div class="kp-disp"><span class="n" id="kpNum">0</span><span class="u" id="kpUnit"></span></div>
+    <div class="kp-tot" id="kpTot"></div>
     <div class="kp-warn" id="kpWarn"></div>
     <div class="kp-quick">
       <button class="ok" id="kpOk">夠用</button>
@@ -418,7 +422,7 @@ body.big{zoom:1.18}
 </div>
 <section class="sheet" id="doneSheet" aria-label="點貨完成">
   <div class="sh-head"><div><b>點貨完成 ✓</b><span id="doneSub"></span></div><button class="sh-x" id="doneClose" aria-label="關閉">×</button></div>
-  <div class="done-b"><button class="btn" id="doneImg" style="background:#7B4FC9;color:#fff;border-color:#7B4FC9">🖼 傳庫存總表圖片（LINE）</button><button class="btn pri" id="donePrint">🖨 A4 列印點貨結果</button><button class="btn" id="doneNo">先不用</button></div>
+  <div class="done-b"><button class="btn" id="doneLine" style="background:#06C755;color:#fff;border-color:#06C755">💬 傳點貨摘要到 LINE（缺貨、要補、快不夠用）</button><button class="btn" id="doneImg" style="background:#7B4FC9;color:#fff;border-color:#7B4FC9">🖼 傳庫存總表圖片（LINE）</button><button class="btn pri" id="donePrint">🖨 A4 列印點貨結果</button><button class="btn" id="doneNo">先不用</button></div>
 </section>
 <section class="sheet req-sheet" id="reqSheet" aria-label="必點還沒點">
   <div class="sh-head"><div><b id="reqTitle">必點還沒點</b><span>這些是每天一定要點的品項</span></div><button class="sh-x" id="reqClose" aria-label="關閉">×</button></div>
@@ -505,6 +509,12 @@ if (USE_FB) {
     };
   };
   stores.wh = mk(LOCS.wh); stores.mk = mk(LOCS.mk);
+  /* 叫貨 App 的資料（只讀）：品項連動、換算，和最近的叫貨／到貨，用來算「每天用多少、預計剩多少」 */
+  const odb = F.getFirestore(A.initializeApp({ apiKey: "AIzaSyB6OI8OVoYRiZB76Lc7JfZ3cpc7h__j4ZM", authDomain: "caixian-order.firebaseapp.com", projectId: "caixian-order" }, "order-read"));
+  stores.ord = {
+    cfg: async () => { const x = await F.getDoc(F.doc(odb, "config", "order")); return x.exists() ? x.data() : null },
+    orders: async (a, b) => (await F.getDocs(F.query(F.collection(odb, "orders"), F.where("date", ">=", a), F.where("date", "<", b)))).docs.map(x => x.data())
+  };
 } else {
   const KC = "caixian-inv-cfg";
   const rd = k => { try { return JSON.parse(localStorage.getItem(k)) } catch { return null } };
@@ -647,7 +657,7 @@ $("#date").value = S.date;
 
 store.watchCfg(c => {
   if (!c || !c.items || !c.items.length) { S.cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (store.mode === "fb") store.saveCfg(S.cfg).catch(err) }
-  else { S.cfg = c; if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6(); else if (!c.mkSeed7) seedMarket7() }
+  else { S.cfg = c; setTimeout(() => loadFlow(), 500); if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6(); else if (!c.mkSeed7) seedMarket7() }
   if (!S.cfg.people || !S.cfg.people.length) S.cfg.people = DEFAULT_CFG.people.slice();
   if (!S.cat || !S.cfg.cats.includes(S.cat)) S.cat = S.cfg.cats[0];
   renderWho(); render();
@@ -763,8 +773,44 @@ function hist7(it) {
   const ds = S.h7 || []; if (!ds.length) return "";
   return ds.map(x => { const e = x.counts && x.counts[it.id]; const v = !e ? "·" : isOk(e) ? "夠" : isZero(e) ? "缺" : fmt(firstVal(it, e) ?? 0); return `<span title="${x.date}">${v}</span>` }).join("");
 }
+/* ===== 用量預估：最近點貨＋叫貨到貨 → 每天約用多少、今天預計剩多少、還夠幾天、要叫多少原料 ===== */
+const FL = { d: null, use: {}, exp: {}, last: {}, map: {}, t: 0 };
+const ordSpecOf = k => { k = String(k || ""); const i = k.lastIndexOf("·"); return i >= 0 ? k.slice(0, i) : k };
+async function loadFlow(force) {
+  if (!stores.ord || !S.cfg) return; const d = S.date;
+  if (!force && FL.d === d && Date.now() - FL.t < 5 * 60e3) return;
+  const a = addDay(d, -15);
+  try {
+    const [oc, ords, wh, mk] = await Promise.all([stores.ord.cfg(), stores.ord.orders(a, d), stores.wh.listRange(a, d), stores.mk.listRange(a, d)]);
+    if (S.date !== d) return;
+    const byId = id => S.cfg.items.find(i => i.id === id);
+    /* 點貨品項 → 叫貨品項（哪一家、哪個規格、1叫貨單位＝幾點貨單位） */
+    const map = {}, arr = {};
+    (oc && oc.sups || []).forEach(sp => sp.items.forEach(it => { const ls = it.inv || []; ls.forEach(iv => { const isp = it.isp && it.isp[iv]; (map[iv] ||= []).push({ sup: sp.name, n: it.n, u: it.u || "", spec: isp || (it.o && it.o.length && ls.length > 1 ? (it.o.find(o => (byId(iv) || { n: "" }).n.includes(o)) || "") : ""), fx: it.fx && +it.fx[iv] > 0 ? +it.fx[iv] : 1 }) }) }));
+    ords.forEach(o => { const sp = (oc && oc.sups || []).find(q => q.id === o.sup); if (!sp || !o.lines) return;
+      Object.entries(o.lines).forEach(([id, e]) => { const it = sp.items.find(x => x.id === id); if (!it || !e || !e.vs) return; const ls = it.inv || []; if (!ls.length) return;
+        Object.entries(e.vs).forEach(([k, q]) => { if (!(q > 0)) return; const got = e.rv && e.rv[k || "_"] != null ? e.rv[k || "_"] : q, spec = ordSpecOf(k);
+          const tgt = ls.length === 1 ? ls[0] : (ls.find(iv => it.isp && it.isp[iv] === spec) || ls.find(iv => spec && (byId(iv) || { n: "" }).n.includes(spec)) || ls[0]);
+          const fx = it.fx && +it.fx[tgt] > 0 ? +it.fx[tgt] : 1; ((arr[tgt] ||= {})[o.date] = ((arr[tgt] || {})[o.date] || 0) + got * fx) }) }) });
+    /* 每天的庫存（倉庫＋市場合計） */
+    const stk = {}, put = (ds, both) => ds.forEach(x => Object.entries(x.counts || {}).forEach(([id, e]) => { const it = byId(id); if (!it || isOk(e)) return; const v = firstVal(it, e); if (v == null) return; ((stk[id] ||= {})[x.date] = ((stk[id] || {})[x.date] || 0) + v) }));
+    put(wh, true); put(mk.map(x => ({ ...x, counts: Object.fromEntries(Object.entries(x.counts || {}).filter(([id]) => { const it = byId(id); return it && (it.mk || it.mko) })) })), true);
+    const use = {}, exp = {}, last = {};
+    Object.entries(stk).forEach(([id, byD]) => {
+      const ds = Object.keys(byD).sort(), rates = [];
+      for (let k = 1; k < ds.length; k++) { const d1 = ds[k - 1], d2 = ds[k], gap = Math.round((new Date(d2) - new Date(d1)) / 864e5); if (gap < 1 || gap > 4) continue;
+        const inA = Object.entries(arr[id] || {}).filter(([od]) => od >= d1 && od < d2).reduce((n, [, q]) => n + q, 0), u = byD[d1] + inA - byD[d2]; if (u >= 0) rates.push(u / gap) }
+      const rr = rates.slice(-7); if (rr.length >= 2) use[id] = rr.reduce((a2, b) => a2 + b, 0) / rr.length;
+      const L = ds[ds.length - 1]; if (L) { last[id] = { d: L, v: byD[L] };
+        const gap = Math.round((new Date(d) - new Date(L)) / 864e5), inA = Object.entries(arr[id] || {}).filter(([od]) => od >= L && od < d).reduce((n, [, q]) => n + q, 0);
+        if (use[id] != null && gap >= 1 && gap <= 4) exp[id] = { v: Math.max(0, byD[L] + inA - use[id] * gap), base: byD[L], inA, gap } }
+    });
+    Object.assign(FL, { d, use, exp, last, map, t: Date.now() });
+    if (S.view === "Sum") renderSum(); if (S.kp) renderKp();
+  } catch (e) { console.warn("flow", e) }
+}
 function openDay(d) {
-  S.date = d; S.day = null; S.prev = null; S.h7 = null; loadH7();
+  S.date = d; S.day = null; S.prev = null; S.h7 = null; loadH7(); setTimeout(() => loadFlow(true), 300);
   if (S.unsub) S.unsub();
   S.unsub = store.watchDay(d, x => { S.day = x; render() });
   store.prevDay(d).then(p => { if (S.date === d) { S.prev = p; render() } }).catch(err);
@@ -897,7 +943,7 @@ function openKp(id) {
   if (needMe()) return;
   const it = itemById(id); if (!it) return;
   const e = counts()[id], pe = pcounts()[id], own = units(it);
-  const main = [...new Set([...own, ...entryUnits(it, e), ...entryUnits(it, pe)])].filter(u => own.includes(u) || uVal(it, e, u) != null || uVal(it, pe, u) != null);
+  const main = [...new Set([...own, ...Object.keys(it.ur || {}), ...entryUnits(it, e), ...entryUnits(it, pe)])].filter(u => own.includes(u) || (it.ur && it.ur[u] > 0) || uVal(it, e, u) != null || uVal(it, pe, u) != null);
   const us = [...main, ...allUnits().filter(u => !main.includes(u))], bufs = {}, fresh = {};
   us.forEach(u => { const v = uVal(it, e, u); bufs[u] = v == null ? "" : fmt(v); fresh[u] = true });
   /* 市場頁：預設用市場的單位（例如修清玉米倉庫用籃、市場用包）；有填過數字就停在那個單位 */
@@ -917,6 +963,14 @@ function kpValue(u) { const b = S.kp.bufs[u]; if (b === "" || b === ".") return 
 function anomaly(it, u) {
   if (!S.kp.touched[u]) return "";
   const v = kpValue(u); if (v == null) return "";
+  /* 跟「昨天庫存＋到貨－每天用量」的預計值比；只看倉庫單獨點的品項（市場合計的另外算） */
+  const ex = FL.d === S.date && FL.exp[it.id], v0 = u === units(it)[0] ? v : null;
+  if (ex && v0 != null && !it.mk && !it.mko && LOC === "wh") {
+    const E = ex.v, et = `預計約 ${fmt(Math.round(E * 10) / 10)}${u}（上次 ${fmt(ex.base)}＋到貨 ${fmt(Math.round(ex.inA * 10) / 10)}－用掉約 ${fmt(Math.round(FL.use[it.id] * ex.gap * 10) / 10)}）`;
+    if (E > 0 && v0 >= 10 && Math.abs(v0 / 10 - E) <= Math.max(1, E * .3) && Math.abs(v0 - E) > Math.max(5, E)) return `${fmt(v0)}${u} 是不是多打一個 0？${et}`;
+    if (v0 >= Math.max(E * 2.5, E + 8)) return `${fmt(v0)}${u} 比預計多很多，${et}`;
+    if (E >= 6 && v0 > 0 && v0 <= E * .25) return `${fmt(v0)}${u} 比預計少很多，${et}`;
+  }
   const pv = uVal(it, pcounts()[it.id], u);
   if (pv != null && pv > 0 && v >= pv * 3 && v - pv >= 5) return `${fmt(v)}${u} 比上次 ${fmt(pv)}${u} 多很多`;
   if (pv == null && minOf(it) && u === S.kp.us[0] && v >= minOf(it) * 5 && v >= 10) return `${fmt(v)}${u} 是安全量的 5 倍以上`;
@@ -940,7 +994,8 @@ function renderKp() {
   $("#kpPrevV").innerHTML = pe ? (isZero(pe) ? "缺" : esc(qtyText(it, pe))) : "—";
   $("#kpPrevV").style.fontSize = pe && qtyText(it, pe).length > 5 ? "14px" : "";
   $("#kpCurV").textContent = e ? `${qtyText(it, e)}・${e.by || ""}` : "還沒點";
-  { const h = hist7(it); $("#kpH7").innerHTML = h ? `<small>最近${(S.h7 || []).length}次</small>${h}<small>→今天</small>` : "" }
+  { const h = hist7(it), ex = FL.d === S.date && FL.exp[it.id], us = FL.use[it.id];
+    $("#kpH7").innerHTML = (h ? `<small>最近${(S.h7 || []).length}次</small>${h}<small>→今天</small>` : "") + (us != null ? `<small class="kp-fl">每天約用 ${fmt(Math.round(us * 10) / 10)}${esc(units(it)[0])}${ex && !it.mk && !it.mko ? `・預計約 ${fmt(Math.round(ex.v * 10) / 10)}` : ""}</small>` : "") }
   // units
   const chip = u => `<button class="${u === k.u ? "on" : ""}${k.main.includes(u) ? " main" : ""}${k.bufs[u] !== "" ? " has" : ""}" data-u="${esc(u)}">${esc(u || "—")}${k.bufs[u] !== "" ? `<b>${esc(k.bufs[u])}</b>` : ""}</button>`;
   const extra = k.us.filter(u => !k.main.includes(u)), showMore = k.more || extra.some(u => k.bufs[u] !== "" || u === k.u);
@@ -950,6 +1005,10 @@ function renderKp() {
   const b = k.bufs[k.u], n = $("#kpNum");
   n.textContent = b === "" ? "0" : b; n.classList.toggle("ph", b === "" || (k.fresh[k.u] && !k.touched[k.u] && e == null));
   $("#kpUnit").textContent = k.u;
+  /* 兩種單位有換算（例如 1箱＝8袋）：打完自動顯示合計 */
+  { const ur = it.ur || {}, u0 = units(it)[0], parts = k.us.filter(u => kpValue(u) != null && (u === u0 || ur[u] > 0));
+    const tot = parts.length > 1 || (parts.length === 1 && parts[0] !== u0) ? parts.reduce((n, u) => n + (u === u0 ? kpValue(u) : kpValue(u) / ur[u]), 0) : null;
+    $("#kpTot").textContent = tot != null ? `合計 ${fmt(Math.round(tot * 100) / 100)} ${u0}（${parts.map(u => fmt(kpValue(u)) + u).join("＋")}）` : "" }
   // warnings
   const w = $("#kpWarn"); w.className = "kp-warn"; w.textContent = "";
   const bad = k.us.map(u => anomaly(it, u)).filter(Boolean)[0];
@@ -1256,6 +1315,20 @@ function sumList(all, c, p, need, zero, drops, miss) {
     ${list.length ? `<table class="t"><tr><th>品名</th><th class="r">今天</th><th class="r">上次</th><th class="r">安全</th><th class="r">要補</th></tr>${list.map(row).join("")}</table>`
       : `<p class="muted" style="margin:6px 0 0">${f === "need" && !all.some(i => minOf(i)) ? "還沒設定安全庫存，到「設定」填寫" : `沒有「${label}」的品項`}</p>`}</div>`;
 }
+/* 快不夠用：今天的庫存 ÷ 每天約用量；加工品顯示要叫哪個原料、叫多少（夠 2 天） */
+function lowCover() {
+  if (FL.d !== S.date) return [];
+  const c = counts();
+  return items().filter(i => !i.mk && !i.mko && FL.use[i.id] > 0 && c[i.id] && !isOk(c[i.id])).map(i => { const v = firstVal(i, c[i.id]) ?? 0, u = FL.use[i.id], days = v / u;
+    const m = (FL.map[i.id] || [])[0], need = Math.max(0, u * 2 - v), q = m ? Math.ceil(need / m.fx) : null;
+    return { i, v, u, days, m, q } }).filter(x => x.days < 1.5).sort((a, b) => a.days - b.days);
+}
+function lowCoverPanel() {
+  const L = lowCover(); if (!L.length) return FL.d === S.date ? "" : `<p class="muted" style="margin:6px 4px">用量預估讀取中…</p>`;
+  return `<div class="panel lowc"><h3>快不夠用 <span class="c w">${L.length}</span></h3><p class="muted" style="margin:0 0 8px">依最近點貨和到貨算出的每天用量；加工品會算到原料要叫多少（夠用 2 天）</p>
+    <table class="t lc"><tr><th>品項</th><th class="r">庫存</th><th class="r">每天約用</th><th class="r">夠</th><th>要叫</th></tr>
+    ${L.map(x => `<tr data-go="${x.i.id}"><td>${esc(x.i.n)}</td><td class="r">${fmt(Math.round(x.v * 10) / 10)}${esc(units(x.i)[0])}</td><td class="r">${fmt(Math.round(x.u * 10) / 10)}</td><td class="r"><b class="${x.days < .7 ? "w" : ""}">${x.days < .1 ? "不夠" : fmt(Math.round(x.days * 10) / 10) + "天"}</b></td><td>${x.m ? `${esc(x.m.n)}${x.m.spec ? " " + esc(x.m.spec) : ""} <b>${fmt(x.q)}${esc(x.m.u)}</b>${x.m.n !== x.i.n ? `<small>（原料）</small>` : ""}` : `<span class="muted">沒連叫貨</span>`}</td></tr>`).join("")}</table></div>`;
+}
 function renderSumInner() {
   const c = counts(), p = pcounts(), all = items(), s = stats(), dn = S.day && S.day.done;
   const rq = reqMissing();
@@ -1278,6 +1351,7 @@ function renderSumInner() {
     <p class="muted" style="margin:0 0 8px">這些沒點完不能按「完成點貨」</p>
     <div class="chips">${rq.map(i => `<button class="chip w" data-go="${i.id}">${esc(i.n)}</button>`).join("")}</div>
     <button class="btn pri" style="margin-top:10px" data-go="${rq[0].id}">從第一項開始點</button></div>` : ""}
+  ${lowCoverPanel()}
   ${sumList(all, c, p, need, zero, drops, miss)}
 `;
   $("#vSum").querySelectorAll("[data-go]").forEach(b => b.onclick = () => goItem(b.dataset.go));
@@ -1321,6 +1395,7 @@ function openDoneSheet(dn) {
   $("#doneSub").textContent = `${LOCS[LOC].name}　${dateLabel(S.date)}　${dn.by} ${hm(dn.t)}`;
   $("#doneSheet").classList.add("show"); $("#scrim").classList.add("show");
   $("#doneImg").onclick = () => { closeDone(); openStockImage() };
+  $("#doneLine").onclick = () => { closeDone(); sendSummaryLine() };
   $("#donePrint").onclick = () => { closeDone(); const keep = S.day; S.day = { ...(S.day || {}), done: dn }; printSheet(true); S.day = keep };
 }
 function closeDone() { $("#doneSheet").classList.remove("show"); $("#scrim").classList.remove("show") }
@@ -1335,6 +1410,25 @@ function finish() {
   store.setDone(S.date, dn);
   openDoneSheet(dn);
   toast("點貨完成 ✓");
+}
+/* 點完傳 LINE 的摘要：只列要注意的（缺貨、低於安全量、快不夠用、必點沒點） */
+function summaryText() {
+  const c = counts(), dn = S.day && S.day.done, who = [...new Set(Object.values(c).map(x => x.by).filter(Boolean))].join("、");
+  const L = [`【採鮮點貨・${LOCS[LOC].name} ${dateLabel(S.date)}】`, `${who ? "清點：" + who : ""}${dn ? `　${hm(dn.t)} 完成` : ""}`];
+  const z = items().filter(i => isZero(c[i.id])); if (z.length) L.push("", `⚠ 缺貨（${z.length}）：${z.map(i => i.n).join("、")}`);
+  const nd = items().filter(i => !isZero(c[i.id]) && needOf(i, c[i.id]) > 0); if (nd.length) L.push("", `📦 低於安全量（${nd.length}）：${nd.map(i => `${i.n} 補${fmt(needOf(i, c[i.id]))}${units(i)[0]}`).join("、")}`);
+  const lc = lowCover().filter(x => !isZero(c[x.i.id])); if (lc.length) L.push("", `⏳ 快不夠用：${lc.map(x => `${x.i.n} 約${fmt(Math.round(x.days * 10) / 10)}天${x.m ? `→叫${x.m.n}${x.m.spec ? x.m.spec : ""} ${fmt(x.q)}${x.m.u}` : ""}`).join("、")}`);
+  const rq = reqMissing(); if (rq.length) L.push("", `❗必點沒點：${rq.map(i => i.n).join("、")}`);
+  const m = items().filter(i => isDue(i) && c[i.id] == null && !isReq(i)).length; if (m) L.push("", `未點 ${m} 項`);
+  if (!z.length && !nd.length && !lc.length && !rq.length) L.push("", "✓ 沒有缺貨，庫存都在安全量以上");
+  if (S.day && S.day.note) L.push("", `備註：${S.day.note}`);
+  return L.filter((x, k) => !(k === 1 && !x)).join("\n").trim();
+}
+async function sendSummaryLine() {
+  const t = summaryText();
+  try { await navigator.clipboard.writeText(t) } catch {}
+  const a = document.createElement("a"); a.href = "line://msg/text/" + encodeURIComponent(t); document.body.appendChild(a); a.click(); a.remove();
+  toast("已打開 LINE，選群組傳送（文字也已複製）");
 }
 function lineText() {
   const c = counts(), who = [...new Set(Object.values(c).map(x => x.by).filter(Boolean))].join("、");
@@ -1886,7 +1980,7 @@ function drawImp() {
 /* 自動檢查新版本：網站更新後，畫面上方出現「有新版本」，點一下就換成新版；
    切回這個頁面時，沒在輸入的話會自動更新 */
 (function () {
-  var BUILD_ID = "20261013071002";
+  var BUILD_ID = "20261017065927";
   var bar = document.getElementById("updBar"), newer = false;
   function busy() { var a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) }
   function go() { location.reload() }
@@ -1894,7 +1988,7 @@ function drawImp() {
   function check() {
     fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : "" }).then(function (t) {
       var m = t && t.match(/var BUILD_ID = "([^"]+)"/);
-      if (m && m[1] !== BUILD_ID && m[1] !== "20261013071002") { newer = true; bar.style.display = "block" }
+      if (m && m[1] !== BUILD_ID && m[1] !== "20261017065927") { newer = true; bar.style.display = "block" }
     }).catch(function () {});
   }
   setTimeout(check, 4000); setInterval(check, 3 * 60 * 1000);
