@@ -141,7 +141,8 @@ nav.bn .dot{position:absolute;top:6px;left:calc(50% + 8px);background:var(--warn
 .kp-warn.lo{color:var(--low);background:var(--lowbg)}
 .kp-warn.bad{color:#fff;background:var(--warn)}
 .kp-warn.ok{color:var(--ok)}
-.kp-quick{display:grid;grid-template-columns:1.2fr 1.2fr .8fr 1fr;gap:6px}
+.kp-quick{display:grid;grid-template-columns:1.4fr .8fr 1fr;gap:6px}
+#kpOk{display:none!important}
 .kp-quick button{border:1px solid var(--line);border-radius:10px;padding:10px 2px;font-size:14px;font-weight:700;background:var(--paper)}
 .kp-quick .z{color:var(--warn);border-color:#EDC0BA;background:var(--warnbg)}
 .kp-quick .ok{color:var(--ok);border-color:#A9D6B8;background:#EEF7F1}
@@ -400,7 +401,7 @@ body.big{zoom:1.18}
     <div class="kp-tot" id="kpTot"></div>
     <div class="kp-warn" id="kpWarn"></div>
     <div class="kp-quick">
-      <button class="ok" id="kpOk">夠用</button>
+      <button class="ok hide" id="kpOk" hidden>夠用</button>
       <button class="z" id="kpZero">缺貨</button>
       <button data-k="half">½</button>
       <button id="kpClear">清除</button>
@@ -588,7 +589,7 @@ const plainNum = (i, e) => !isMulti(i, e) && firstVal(i, e) != null;
 /* 「夠用」：不點數量，只標記庫存足夠 { ok: 1 } */
 const isOk = e => !!e && !!e.ok;
 /* 一定要點數量、不能按「夠用」的品項（綠豆芽、黃豆芽） */
-const mustQty = it => !!it && (it.nq || /^(綠豆芽|黃豆芽|豆芽菜)/.test(it.n || ""));
+const mustQty = () => true;   /* 「夠用」已取消：每一項都要點數量 */
 function qtyText(i, e) {
   if (!e) return "";
   if (isOk(e)) return "夠用";
@@ -986,7 +987,7 @@ function renderKp() {
   const act = all.filter(isActive), pos = act.indexOf(it);
   $("#kpSub").textContent = `${it.c}　${pos >= 0 ? `第 ${pos + 1} / ${act.length} 項` : "今天不用點"}${freqOf(it) ? "　" + freqLabel(freqOf(it)) : ""}`;
   $("#kpReq").classList.toggle("hide", !isReq(it));
-  $("#kpOk").disabled = mustQty(it); $("#kpOk").textContent = mustQty(it) ? "要點數量" : "夠用";
+
   // info
   const mn = minOf(it), sf = $("#kpSafe");
   sf.classList.toggle("none", !mn);
@@ -1980,7 +1981,7 @@ function drawImp() {
 /* 自動檢查新版本：網站更新後，畫面上方出現「有新版本」，點一下就換成新版；
    切回這個頁面時，沒在輸入的話會自動更新 */
 (function () {
-  var BUILD_ID = "20261017065927";
+  var BUILD_ID = "20261018054950";
   var bar = document.getElementById("updBar"), newer = false;
   function busy() { var a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) }
   function go() { location.reload() }
@@ -1988,7 +1989,7 @@ function drawImp() {
   function check() {
     fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : "" }).then(function (t) {
       var m = t && t.match(/var BUILD_ID = "([^"]+)"/);
-      if (m && m[1] !== BUILD_ID && m[1] !== "20261017065927") { newer = true; bar.style.display = "block" }
+      if (m && m[1] !== BUILD_ID && m[1] !== "20261018054950") { newer = true; bar.style.display = "block" }
     }).catch(function () {});
   }
   setTimeout(check, 4000); setInterval(check, 3 * 60 * 1000);
