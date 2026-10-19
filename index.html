@@ -574,9 +574,13 @@ const isReq = i => LOC === "mk" ? !!i.rm : !!i.r;
 const uVal = (i, e, u) => { if (!e) return null; if (e.vs) return e.vs[u] ?? null; return u === units(i)[0] ? (e.v ?? null) : null };
 const isZero = e => !!e && (e.vs ? Object.values(e.vs).length > 0 && Object.values(e.vs).every(x => x === 0) : e.v === 0);
 /* 第一個單位的數量；其他單位有設換算（ur，例如 地瓜葉捆：1捆＝9小把）就一起折算進來，例如 2捆 4小把 ＝ 2.44捆 */
+/* 叫貨用整件（例如 蒟蒻結 1件＝12包）：點貨也可以直接點「件」，自動換成包數。換算從叫貨的單位規格總表來 */
+function ordUnits(i) { const r = {}, us = units(i); (FL.map[i.id] || []).forEach(m => { const u = String(m.u || "").trim(); if (!u || us.includes(u) || !(m.fx > 1) || /^(kg|KG|Kg|公斤|斤|台斤)$/.test(u) || r[u]) return; r[u] = 1 / m.fx }); return r }
+const effUr = i => ({ ...ordUnits(i), ...(i.ur || {}) });
+const ordUnitHint = i => Object.entries(ordUnits(i)).map(([u, r]) => `1${u}＝${fmt(Math.round(1 / r * 100) / 100)}${units(i)[0]}`).join("、");
 const firstVal = (i, e) => {
-  const us = units(i); let v = uVal(i, e, us[0]);
-  if (e && e.vs && i.ur) { let add = 0, any = v != null; us.slice(1).forEach(u => { const r = +i.ur[u], q = e.vs[u]; if (r > 0 && q != null) { add += q / r; any = true } }); if (any) v = Math.round(((v || 0) + add) * 100) / 100 }
+  const us = units(i), ur = effUr(i); let v = uVal(i, e, us[0]);
+  if (e && e.vs && Object.keys(ur).length) { let add = 0, any = v != null; [...us.slice(1), ...Object.keys(ur).filter(u => !us.includes(u))].forEach(u => { const r = +ur[u], q = e.vs[u]; if (r > 0 && q != null) { add += q / r; any = true } }); if (any) v = Math.round(((v || 0) + add) * 100) / 100 }
   return v;
 };
 const isLow = (i, e) => { if (!e || !minOf(i) || isZero(e)) return false; const v = firstVal(i, e); return v != null && v < minOf(i) };
@@ -793,6 +797,7 @@ async function loadFlow(force) {
         Object.entries(e.vs).forEach(([k, q]) => { if (!(q > 0)) return; const got = e.rv && e.rv[k || "_"] != null ? e.rv[k || "_"] : q, spec = ordSpecOf(k);
           const tgt = ls.length === 1 ? ls[0] : (ls.find(iv => it.isp && it.isp[iv] === spec) || ls.find(iv => spec && (byId(iv) || { n: "" }).n.includes(spec)) || ls[0]);
           const fx = it.fx && +it.fx[tgt] > 0 ? +it.fx[tgt] : 1; ((arr[tgt] ||= {})[o.date] = ((arr[tgt] || {})[o.date] || 0) + got * fx) }) }) });
+    FL.map = map;
     /* 每天的庫存（倉庫＋市場合計） */
     const stk = {}, put = (ds, both) => ds.forEach(x => Object.entries(x.counts || {}).forEach(([id, e]) => { const it = byId(id); if (!it || isOk(e)) return; const v = firstVal(it, e); if (v == null) return; ((stk[id] ||= {})[x.date] = ((stk[id] || {})[x.date] || 0) + v) }));
     put(wh, true); put(mk.map(x => ({ ...x, counts: Object.fromEntries(Object.entries(x.counts || {}).filter(([id]) => { const it = byId(id); return it && (it.mk || it.mko) })) })), true);
@@ -944,7 +949,7 @@ function openKp(id) {
   if (needMe()) return;
   const it = itemById(id); if (!it) return;
   const e = counts()[id], pe = pcounts()[id], own = units(it);
-  const main = [...new Set([...own, ...Object.keys(it.ur || {}), ...entryUnits(it, e), ...entryUnits(it, pe)])].filter(u => own.includes(u) || (it.ur && it.ur[u] > 0) || uVal(it, e, u) != null || uVal(it, pe, u) != null);
+  const main = [...new Set([...own, ...Object.keys(effUr(it)), ...entryUnits(it, e), ...entryUnits(it, pe)])].filter(u => own.includes(u) || effUr(it)[u] > 0 || uVal(it, e, u) != null || uVal(it, pe, u) != null);
   const us = [...main, ...allUnits().filter(u => !main.includes(u))], bufs = {}, fresh = {};
   us.forEach(u => { const v = uVal(it, e, u); bufs[u] = v == null ? "" : fmt(v); fresh[u] = true });
   /* 市場頁：預設用市場的單位（例如修清玉米倉庫用籃、市場用包）；有填過數字就停在那個單位 */
@@ -1007,9 +1012,9 @@ function renderKp() {
   n.textContent = b === "" ? "0" : b; n.classList.toggle("ph", b === "" || (k.fresh[k.u] && !k.touched[k.u] && e == null));
   $("#kpUnit").textContent = k.u;
   /* 兩種單位有換算（例如 1箱＝8袋）：打完自動顯示合計 */
-  { const ur = it.ur || {}, u0 = units(it)[0], parts = k.us.filter(u => kpValue(u) != null && (u === u0 || ur[u] > 0));
+  { const ur = effUr(it), u0 = units(it)[0], parts = k.us.filter(u => kpValue(u) != null && (u === u0 || ur[u] > 0));
     const tot = parts.length > 1 || (parts.length === 1 && parts[0] !== u0) ? parts.reduce((n, u) => n + (u === u0 ? kpValue(u) : kpValue(u) / ur[u]), 0) : null;
-    $("#kpTot").textContent = tot != null ? `合計 ${fmt(Math.round(tot * 100) / 100)} ${u0}（${parts.map(u => fmt(kpValue(u)) + u).join("＋")}）` : "" }
+    $("#kpTot").textContent = tot != null ? `合計 ${fmt(Math.round(tot * 100) / 100)} ${u0}（${parts.map(u => fmt(kpValue(u)) + u).join("＋")}）` : ordUnitHint(it) ? `整件可以直接點：${ordUnitHint(it)}` : "" }
   // warnings
   const w = $("#kpWarn"); w.className = "kp-warn"; w.textContent = "";
   const bad = k.us.map(u => anomaly(it, u)).filter(Boolean)[0];
@@ -1981,7 +1986,7 @@ function drawImp() {
 /* 自動檢查新版本：網站更新後，畫面上方出現「有新版本」，點一下就換成新版；
    切回這個頁面時，沒在輸入的話會自動更新 */
 (function () {
-  var BUILD_ID = "20261018054950";
+  var BUILD_ID = "20261019202636";
   var bar = document.getElementById("updBar"), newer = false;
   function busy() { var a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) }
   function go() { location.reload() }
@@ -1989,7 +1994,7 @@ function drawImp() {
   function check() {
     fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : "" }).then(function (t) {
       var m = t && t.match(/var BUILD_ID = "([^"]+)"/);
-      if (m && m[1] !== BUILD_ID && m[1] !== "20261018054950") { newer = true; bar.style.display = "block" }
+      if (m && m[1] !== BUILD_ID && m[1] !== "20261019202636") { newer = true; bar.style.display = "block" }
     }).catch(function () {});
   }
   setTimeout(check, 4000); setInterval(check, 3 * 60 * 1000);
