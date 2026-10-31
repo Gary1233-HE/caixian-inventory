@@ -10,7 +10,19 @@
 <title>採鮮點貨</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
+<!-- 加速：Excel 工具改成背景下載，不擋畫面；還沒下載完就按匯出會提示 -->
+<script async src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+window.addEventListener("error", function (e) {
+  if (!/XLSX is not defined/.test(String(e && e.message))) return;
+  var t = document.createElement("div");
+  t.textContent = "Excel 工具還在下載，請過幾秒再按一次";
+  t.style.cssText = "position:fixed;left:16px;right:16px;bottom:24px;z-index:99999;padding:12px;border-radius:10px;background:#222;color:#fff;text-align:center;font-size:15px";
+  document.body.appendChild(t); setTimeout(function () { t.remove() }, 2500);
+});
+</script>
 <style>
 :root{
   --bg:#E7EAE3; --paper:#FFFFFF; --ink:#1D2B22; --muted:#6A746C; --line:#D2D7CE;
@@ -485,7 +497,8 @@ const stores = {};
 if (USE_FB) {
   const A = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
   const F = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-  const db = F.getFirestore(A.initializeApp(FB_CONFIG));
+  const fastDb = app => { try { return F.initializeFirestore(app, { localCache: F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }) }) } catch (e) { console.warn("cache", e); return F.getFirestore(app) } };
+  const db = fastDb(A.initializeApp(FB_CONFIG));
   const shared = {
     mode: "fb",
     watchCfg: cb => F.onSnapshot(F.doc(db, "config", "inventory"), s => cb(s.exists() ? s.data() : null), err),
@@ -511,7 +524,7 @@ if (USE_FB) {
   };
   stores.wh = mk(LOCS.wh); stores.mk = mk(LOCS.mk);
   /* 叫貨 App 的資料（只讀）：品項連動、換算，和最近的叫貨／到貨，用來算「每天用多少、預計剩多少」 */
-  const odb = F.getFirestore(A.initializeApp({ apiKey: "AIzaSyB6OI8OVoYRiZB76Lc7JfZ3cpc7h__j4ZM", authDomain: "caixian-order.firebaseapp.com", projectId: "caixian-order" }, "order-read"));
+  const odb = fastDb(A.initializeApp({ apiKey: "AIzaSyB6OI8OVoYRiZB76Lc7JfZ3cpc7h__j4ZM", authDomain: "caixian-order.firebaseapp.com", projectId: "caixian-order" }, "order-read"));
   stores.ord = {
     cfg: async () => { const x = await F.getDoc(F.doc(odb, "config", "order")); return x.exists() ? x.data() : null },
     orders: async (a, b) => (await F.getDocs(F.query(F.collection(odb, "orders"), F.where("date", ">=", a), F.where("date", "<", b)))).docs.map(x => x.data())
@@ -818,7 +831,7 @@ async function loadFlow(force) {
 function openDay(d) {
   S.date = d; S.day = null; S.prev = null; S.h7 = null; loadH7(); setTimeout(() => loadFlow(true), 300);
   if (S.unsub) S.unsub();
-  S.unsub = store.watchDay(d, x => { S.day = x; render() });
+  S.unsub = store.watchDay(d, x => { S.day = x; renderSoon() });
   store.prevDay(d).then(p => { if (S.date === d) { S.prev = p; render() } }).catch(err);
 }
 $("#date").addEventListener("change", e => { if (e.target.value) openDay(e.target.value) });
@@ -826,7 +839,10 @@ let lastToday = today();
 setInterval(() => { const t = today(); if (t !== lastToday) { if (S.date === lastToday) { $("#date").value = t; openDay(t) } lastToday = t } }, 60000);
 
 /* ================= render ================= */
+var renderQ = 0;
+function renderSoon() { if (renderQ) return; renderQ = requestAnimationFrame(() => { renderQ = 0; render() }) }
 function render() {
+  if (renderQ) { cancelAnimationFrame(renderQ); renderQ = 0 }
   if (!S.cfg) return;
   renderBar();
   if (S.view === "Count") renderCount();
