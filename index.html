@@ -675,7 +675,7 @@ $("#date").value = S.date;
 
 store.watchCfg(c => {
   if (!c || !c.items || !c.items.length) { S.cfg = JSON.parse(JSON.stringify(DEFAULT_CFG)); if (store.mode === "fb") store.saveCfg(S.cfg).catch(err) }
-  else { S.cfg = c; setTimeout(() => loadFlow(), 500); if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6(); else if (!c.mkSeed7) seedMarket7() }
+  else { S.cfg = c; setTimeout(() => loadFlow(), 500); if (!c.mkSeed1) seedMarket1(); else if (!c.mkSeed2) seedMarket2(); else if (!c.mkSeed3) seedMarket3(); else if (!c.frz1) seedFrozen1(); else if (!c.mkSeed4) seedMarket4(); else if (!c.mkSeed5) seedMarket5(); else if (!c.mkSeed6) seedMarket6(); else if (!c.mkSeed7) seedMarket7(); else if (!c.onion1) seedOnion1() }
   if (!S.cfg.people || !S.cfg.people.length) S.cfg.people = DEFAULT_CFG.people.slice();
   if (!S.cat || !S.cfg.cats.includes(S.cat)) S.cat = S.cfg.cats[0];
   renderWho(); render();
@@ -773,6 +773,13 @@ function seedMarket7() {
       return stores.mk.setCount(d.date, a.id, { vs: { "袋": x.v ?? 0 }, by: x.by || "", t: x.t || Date.now(), n: a.n, u: a.u, c: a.c }).then(() => stores.mk.setCount(d.date, m.id, null)) }))).catch(() => {});
   }
   stores.wh.saveCfg(cfg).then(() => { window.__mk7 = 0; if (a && m) toast("金針2.5kg 已併入金針A（1箱＝8袋），倉庫和市場一起算", 4000) }).catch(e => { window.__mk7 = 0; err(e) });
+}
+/* 一次性：新增「去皮洋蔥」（ERP 編號 L068，當作品項 ID），放在洋蔥後面；叫貨的去皮洋蔥會自動連過來 */
+function seedOnion1() {
+  if (window.__on1) return; window.__on1 = 1;
+  const cfg = JSON.parse(JSON.stringify(S.cfg)); cfg.onion1 = 1;
+  if (!cfg.items.some(i => i.n === "去皮洋蔥")) { const k = cfg.items.findIndex(i => i.n === "洋蔥"); cfg.items.splice(k >= 0 ? k + 1 : cfg.items.length, 0, { id: "L068", n: "去皮洋蔥", u: "袋", c: "根莖類" }) }
+  stores.wh.saveCfg(cfg).then(() => { window.__on1 = 0; toast("已新增「去皮洋蔥」（袋），在根莖類洋蔥下面", 4000) }).catch(e => { window.__on1 = 0; err(e) });
 }
 function setLoc(l) {
   LOC = l; try { localStorage.setItem("caixian-inv-loc", l) } catch {}
@@ -2002,7 +2009,7 @@ function drawImp() {
 /* 自動檢查新版本：網站更新後，畫面上方出現「有新版本」，點一下就換成新版；
    切回這個頁面時，沒在輸入的話會自動更新 */
 (function () {
-  var BUILD_ID = "20261019202636";
+  var BUILD_ID = "20261104092249";
   var bar = document.getElementById("updBar"), newer = false;
   function busy() { var a = document.activeElement; return a && /INPUT|TEXTAREA|SELECT/.test(a.tagName) }
   function go() { location.reload() }
@@ -2010,7 +2017,7 @@ function drawImp() {
   function check() {
     fetch(location.pathname + "?v=" + Date.now(), { cache: "no-store" }).then(function (r) { return r.ok ? r.text() : "" }).then(function (t) {
       var m = t && t.match(/var BUILD_ID = "([^"]+)"/);
-      if (m && m[1] !== BUILD_ID && m[1] !== "20261019202636") { newer = true; bar.style.display = "block" }
+      if (m && m[1] !== BUILD_ID && m[1] !== "20261104092249") { newer = true; bar.style.display = "block" }
     }).catch(function () {});
   }
   setTimeout(check, 4000); setInterval(check, 3 * 60 * 1000);
